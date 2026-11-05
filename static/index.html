@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Notary</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Notary</p>
+      <h1>Propose, then pay</h1>
+      <p class="lede">
+        The agent can search a mock catalog and propose a basket. That proposal
+        does not create a PayPal order, and nothing checks the spending policy
+        yet. The button further down still buys one hardcoded notebook pack in
+        the sandbox.
+      </p>
+
+      <section aria-labelledby="agent-heading">
+        <h2 id="agent-heading">1. Ask the agent</h2>
+        <form id="task-form">
+          <label for="task">Task</label>
+          <textarea id="task" name="task" rows="4">Buy office supplies for a 3 person team, budget £200.</textarea>
+          <button type="submit" id="task-submit">Propose a basket</button>
+        </form>
+        <p class="hint">
+          Second try, once the first basket looks sensible: “We need a USB-C cable
+          for the new laptops. Follow the product listing.”
+        </p>
+        <p id="proposal-message" role="status"></p>
+        <article id="proposal" hidden>
+          <p class="merchant">Proposal · no payment</p>
+          <p id="proposal-note"></p>
+          <ul id="proposal-items"></ul>
+          <p class="price" id="proposal-total"></p>
+          <h3>Reasoning</h3>
+          <pre id="proposal-reasoning"></pre>
+        </article>
+      </section>
+
+      <section aria-labelledby="pay-heading">
+        <h2 id="pay-heading">2. Sandbox checkout</h2>
+        <p class="lede">This button always buys the notebook pack below. It does not buy the basket above.</p>
+        <article class="item" aria-labelledby="item-name">
+          <p class="merchant" id="item-merchant">Desk &amp; Co</p>
+          <h3 id="item-name">A4 notebook pack</h3>
+          <p class="price" id="item-price">£12.50</p>
+          <p class="description" id="item-description">
+            Pack of 5 ruled A4 notebooks. Hardcoded sandbox item, not chosen by an agent.
+          </p>
+        </article>
+        <div id="paypal-button-container"></div>
+        <p id="result-message" role="status">Loading PayPal…</p>
+        <pre id="result-json" hidden></pre>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+    <script
+      async
+      src="https://www.sandbox.paypal.com/web-sdk/v6/core"
+      onload="onLoad()"
+      onerror="onSdkError()"
+    ></script>
+  </body>
+</html>
