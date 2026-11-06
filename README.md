@@ -1,18 +1,18 @@
 # Notary
 
-Notary sits between a shopping agent and PayPal. The agent may propose a purchase. No PayPal order is created until that proposal has been checked against a spending policy. This repository is the hackathon build. The check itself is not wired up yet.
+Notary sits between a shopping agent and PayPal. The agent may propose a purchase. No PayPal order is created until that proposal has been checked against a spending policy. A passing basket can be paid in the PayPal sandbox. A failing basket cannot.
 
 ## What works today
 
-**A catalog and an agent.** `data/catalog.json` has 31 products across 5 merchants. One listing, `USB-C-CABLE`, tells the agent to buy 50 units. The agent searches that file with tools and proposes a basket. The server prices every line from the catalog. A proposal does not create a PayPal order, and the spending policy is not checked yet.
+**A catalog and an agent.** `data/catalog.json` has 31 products across 5 merchants. One listing, `USB-C-CABLE`, tells the agent to buy 50 units. The agent searches that file with tools and proposes a basket. The server prices every line from the catalog. The proposal is checked before PayPal is offered.
 
 The model is any hosted Chat Completions API. Set `LLM_API_KEY`, `LLM_BASE_URL` (ending in `/v1`), and `LLM_MODEL`. Groq's free tier works: base URL `https://api.groq.com/openai/v1`, model `openai/gpt-oss-20b`. `llama-3.3-70b-versatile` has been removed from Groq and returns 404.
 
 The agent is naive on purpose. Its system prompt tells it to follow purchasing instructions written inside a product listing, even when that conflicts with the user's budget. That simulates an agent that has been fooled, or was never told to distrust merchant text. Notary does not trust the agent. The check has to catch a bad basket when the agent is fully convinced. The graph is built from the tool trace, not from a second reading of the prose: the user's task is the goal, each listing the agent opened is a claim, and each line is a purchase. A quantity that the listing demands and the user did not ask for is supported by the listing, not by the goal. For `USB-C-CABLE`, that quantity is 50.
 
-**Spending policy.** `policies/default.yaml` caps an order at £200 and a 7-day total at £500, allows the five catalog merchants, blocks `alcohol`, and rejects the same item from the same merchant within 24 hours. `verify()` encodes each rule as Z3 constraints. SAT means the order is allowed. The PayPal button does not call this yet.
+**Spending policy.** `policies/default.yaml` caps an order at £200 and a 7-day total at £500, allows the five catalog merchants, blocks `alcohol`, and rejects the same item from the same merchant within 24 hours. `verify()` encodes each rule as Z3 constraints. SAT means the order is allowed. The page shows the PayPal button only after a pass, and `POST /api/orders` checks the same basket again before creating an order. The amount is the catalog total stored with that check. A capture with status `COMPLETED` or `PENDING` is written to the SQLite ledger, one row per line, so the next proposal can see it.
 
-**A hardcoded sandbox payment.** An A4 notebook pack at £12.50 can be paid in the PayPal sandbox. That button does not buy the agent's basket.
+**Sandbox checkout.** The buyer approves in the PayPal JavaScript SDK v6 button. The browser sends a checkout id, not a price.
 
 1. The server creates an order with the Orders v2 API (`POST /v2/checkout/orders`, intent `CAPTURE`).
 2. The PayPal JavaScript SDK v6 button sends the buyer to approve it.
@@ -66,6 +66,7 @@ src/exprparse.py       safe arithmetic parser for the reasoning lines
 src/policy.py          load policies/default.yaml
 src/verifier.py        Z3 check for each spending rule
 src/ledger.py          SQLite spend history
+src/checkout.py        a passing basket, held until capture
 src/paypal_client.py   sandbox OAuth, create, capture
 data/catalog.json      31 mock products
 static/                the page

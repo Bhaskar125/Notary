@@ -2,7 +2,12 @@
 
 // PayPal JS SDK v6 (docs updated Oct 2026): the button is a <paypal-button>
 // element, and createOrder must resolve to { orderId }, not a bare string.
-// The order amount is decided by POST /api/orders. This file never sends a price.
+// The button is created only after the policy check passes. This file never
+// sends a price. POST /api/orders receives the checkout id and prices the
+// basket from the catalog total stored with that check.
+
+let pageConfig = null;
+let paypalSdk = null;
 
 function formatMoney(currency, value) {
   if (currency === "GBP") return `£${value}`;
@@ -28,93 +33,94 @@ function showResult(message, payload) {
   }
 }
 
+function clearPayPalButton() {
+  document.getElementById("paypal-button-container").replaceChildren();
+}
+
 async function onLoad() {
-  let config;
   try {
     const response = await fetch("/api/config");
-    config = await response.json();
+    pageConfig = await response.json();
   } catch (error) {
-    showResult("Could not reach the Notary server.");
+    document.getElementById("proposal-message").textContent = "Could not reach the Notary server.";
     return;
   }
 
   const proposalMessage = document.getElementById("proposal-message");
-  if (!config.llm_configured) {
+  if (!pageConfig.llm_configured) {
     proposalMessage.textContent =
       "Add LLM_API_KEY, LLM_BASE_URL, and LLM_MODEL to .env, then restart the server. A proposal needs those before it will run.";
   } else {
-    proposalMessage.textContent = `Ready. The model is ${config.llm_model}. A proposal will not create a PayPal order.`;
+    proposalMessage.textContent = `Ready. The model is ${pageConfig.llm_model}. PayPal is offered only if the basket passes.`;
   }
 
-  const item = config.item;
-  document.getElementById("item-merchant").textContent = item.merchant;
-  document.getElementById("item-name").textContent = item.name;
-  document.getElementById("item-price").textContent = formatMoney(item.currency, item.value);
-  document.getElementById("item-description").textContent = item.description;
-
-  if (!config.configured || !config.paypal_client_id) {
-    showResult(
-      "Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to .env, then restart the server. No order is created until those are set.",
-    );
+  if (!pageConfig.configured || !pageConfig.paypal_client_id) {
     return;
   }
-
   if (!window.paypal) {
-    showResult("The PayPal sandbox script loaded, but window.paypal is missing.");
     return;
   }
 
   try {
-    const sdkInstance = await window.paypal.createInstance({
-      clientId: config.paypal_client_id,
+    paypalSdk = await window.paypal.createInstance({
+      clientId: pageConfig.paypal_client_id,
       components: ["paypal-payments"],
       pageType: "checkout",
       locale: "en-GB",
     });
-
-    const eligibility = await sdkInstance.findEligibleMethods({
-      currencyCode: item.currency,
-      amount: item.value,
-    });
-
-    if (!eligibility.isEligible("paypal")) {
-      showResult(
-        "PayPal is not an eligible payment method for this browser and GBP amount. No order was created.",
-      );
-      return;
-    }
-
-    const button = document.createElement("paypal-button");
-    document.getElementById("paypal-button-container").append(button);
-
-    const session = await sdkInstance.createPayPalOneTimePaymentSession({
-      onApprove,
-      onCancel,
-      onError,
-    });
-
-    button.addEventListener("click", async () => {
-      try {
-        showResult("Opening PayPal…");
-        // Do not await createOrder() before passing it in. The v6 docs say
-        // awaiting it first causes transient activation failures.
-        const createOrderPromise = createOrder();
-        await session.start({ presentationMode: "auto" }, createOrderPromise);
-      } catch (error) {
-        console.error(error);
-        showResult(error.message || "Could not start PayPal checkout.");
-      }
-    });
-
-    showResult("Use a sandbox personal account to approve the £12.50 payment.");
   } catch (error) {
     console.error(error);
-    showResult(error.message || "Could not start the PayPal button.");
+    paypalSdk = null;
   }
 }
 
-async function createOrder() {
-  const response = await fetch("/api/orders", { method: "POST" });
+async function mountPayPalButton(checkoutId, total) {
+  clearPayPalButton();
+  if (!paypalSdk) {
+    showResult(
+      "The check passed. Add PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET to .env and restart the server before this basket can be paid.",
+    );
+    return;
+  }
+
+  const eligibility = await paypalSdk.findEligibleMethods({
+    currencyCode: "GBP",
+    amount: total,
+  });
+  if (!eligibility.isEligible("paypal")) {
+    showResult("PayPal is not an eligible payment method for this browser and this GBP amount. No order was created.");
+    return;
+  }
+
+  const button = document.createElement("paypal-button");
+  document.getElementById("paypal-button-container").append(button);
+  const session = await paypalSdk.createPayPalOneTimePaymentSession({
+    onApprove,
+    onCancel,
+    onError,
+  });
+
+  button.addEventListener("click", async () => {
+    try {
+      showResult("Opening PayPal…");
+      // Do not await createOrder() before passing it in. The v6 docs say
+      // awaiting it first causes transient activation failures.
+      const createOrderPromise = createOrder(checkoutId);
+      await session.start({ presentationMode: "auto" }, createOrderPromise);
+    } catch (error) {
+      console.error(error);
+      showResult(error.message || "Could not start PayPal checkout.");
+    }
+  });
+  showResult(`Use a sandbox personal account to approve the £${total} payment.`);
+}
+
+async function createOrder(checkoutId) {
+  const response = await fetch("/api/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checkout_id: checkoutId }),
+  });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     const message = errorText(body);
@@ -136,10 +142,12 @@ async function onApprove(data) {
   }
   const amount = body.amount ? formatMoney(body.amount.currency_code, body.amount.value) : "";
   const status = body.capture_status || body.status;
+  const recorded = body.ledger_recorded ? " The spend was written to the ledger." : "";
   showResult(
-    `Captured ${amount}. Order ${body.id}, capture ${body.capture_id}, status ${status}.`,
+    `Captured ${amount}. Order ${body.id}, capture ${body.capture_id}, status ${status}.${recorded}`,
     body,
   );
+  clearPayPalButton();
   return body;
 }
 
@@ -154,7 +162,58 @@ function onError(error) {
 }
 
 function onSdkError() {
-  showResult("Could not load the PayPal sandbox script. Check your network and reload.");
+  const message = document.getElementById("result-message");
+  if (message) {
+    message.textContent = "Could not load the PayPal sandbox script. Check your network and reload.";
+  }
+}
+
+function renderVerification(verification) {
+  const box = document.getElementById("verification");
+  const heading = document.getElementById("verification-heading");
+  const list = document.getElementById("verification-list");
+  box.hidden = false;
+  box.className = verification.passed ? "pass" : "fail";
+  heading.textContent = verification.passed ? "Allowed" : "Blocked";
+  list.replaceChildren();
+  if (verification.passed) {
+    const row = document.createElement("li");
+    row.textContent = "Every spending rule passed.";
+    list.append(row);
+    return;
+  }
+  for (const failure of verification.failures) {
+    const row = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = failure.rule_id;
+    row.append(title);
+    row.append(document.createTextNode(` — ${failure.explanation}`));
+    const detail = counterexampleText(failure.counterexample);
+    if (detail) {
+      const extra = document.createElement("div");
+      extra.className = "counterexample";
+      extra.textContent = detail;
+      row.append(extra);
+    }
+    if (failure.node_ids && failure.node_ids.length) {
+      const nodes = document.createElement("div");
+      nodes.className = "counterexample";
+      nodes.textContent = `Nodes: ${failure.node_ids.join(", ")}`;
+      row.append(nodes);
+    }
+    list.append(row);
+  }
+}
+
+function counterexampleText(example) {
+  if (!example || typeof example !== "object") return "";
+  const parts = [];
+  for (const [key, value] of Object.entries(example)) {
+    if (value === null || value === undefined) continue;
+    const shown = typeof value === "string" ? value : JSON.stringify(value);
+    parts.push(`${key.replaceAll("_", " ")}: ${shown}`);
+  }
+  return parts.join("; ");
 }
 
 document.getElementById("task-form").addEventListener("submit", async (event) => {
@@ -169,6 +228,9 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
   }
   submit.disabled = true;
   card.hidden = true;
+  clearPayPalButton();
+  document.getElementById("verification").hidden = true;
+  showResult("");
   message.textContent = "Asking the agent. It may search the catalog a few times.";
   try {
     const response = await fetch("/api/proposals", {
@@ -197,8 +259,16 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
     document.getElementById("proposal-note").textContent = body.note;
     document.getElementById("proposal-total").textContent = `Total £${body.total_gbp}`;
     document.getElementById("proposal-reasoning").textContent = body.reasoning;
+    renderVerification(body.verification);
     card.hidden = false;
-    message.textContent = `Proposed in ${body.rounds} model call${body.rounds === 1 ? "" : "s"}. Nothing was sent to PayPal.`;
+    const rounds = `Proposed in ${body.rounds} model call${body.rounds === 1 ? "" : "s"}.`;
+    if (body.verification.passed) {
+      message.textContent = `${rounds} The check passed.`;
+      await mountPayPalButton(body.checkout_id, body.total_gbp);
+    } else {
+      message.textContent = `${rounds} The check blocked this basket. Nothing was sent to PayPal.`;
+      showResult("Blocked. No PayPal order was created.");
+    }
   } catch (error) {
     console.error(error);
     message.textContent = "Could not reach the Notary server.";

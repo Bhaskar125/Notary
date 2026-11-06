@@ -17,10 +17,11 @@ from typing import Any
 
 import z3
 
-from src.exprparse import evaluate_calculation, extract_arithmetic
+from src.exprparse import evaluate_calculation, evaluate_numeric, extract_arithmetic
 from src.policy import Policy
 
-_TOTAL_LINE = re.compile(r"(?i)\b(?:order\s+)?total\s*=\s*(\d+(?:\.\d{1,2})?)")
+_TOTAL_PREFIX = re.compile(r"(?i)\btotal\s*=")
+_LEADING_AMOUNT = re.compile(r"\s*(\d+(?:\.\d{1,2})?)")
 
 
 def verify(
@@ -208,8 +209,22 @@ def _arithmetic_consistency(policy: Policy, order: dict, graph: dict, history: l
             _nodes_for_line(line, order),
         )
 
-    stated = _stated_total(reasoning)
+    added, stated = _final_total(reasoning)
     order_total = Decimal(str(order["total_gbp"]))
+    if added is not None and stated is not None and not _pence_equal(added, stated):
+        return _failure(
+            "arithmetic_consistency",
+            (
+                f"The amounts on the total line add up to £{_pounds(_pence(added))}, "
+                f"but the reasoning states £{_pounds(_pence(stated))}."
+            ),
+            {
+                "added_gbp": _pounds(_pence(added)),
+                "stated_gbp": _pounds(_pence(stated)),
+                "order_total_gbp": _pounds(_pence(order_total)),
+            },
+            _purchase_ids(order),
+        )
     if stated is None:
         stated_flag = z3.Bool("total_was_stated")
         if not _holds([stated_flag == z3.BoolVal(False), stated_flag == z3.BoolVal(True)]):
@@ -320,16 +335,41 @@ def _in_hours(row: dict, now: datetime, hours: int) -> bool:
     return now - timedelta(hours=hours) <= when <= now
 
 
-def _stated_total(reasoning: str) -> Decimal | None:
-    found: Decimal | None = None
+def _final_total(reasoning: str) -> tuple[Decimal | None, Decimal | None]:
+    """The last total line, as (added value, stated number).
+
+    ``Total = 22.00 + 10.50 = 95.98`` adds the parts and reads 95.98 as the claim.
+    ``Total = 90.49, well within the budget`` has no sum, so the claim is 90.49.
+    A sum is never reduced to its first number.
+    """
+    added: Decimal | None = None
+    stated: Decimal | None = None
     for line in reasoning.splitlines():
-        cleaned = line.replace("£", "").replace(",", "").strip()
+        cleaned = line.replace("£", "").replace("$", "").replace(",", "").replace("×", "*").strip()
         if cleaned.endswith("."):
             cleaned = cleaned[:-1].strip()
-        match = _TOTAL_LINE.search(cleaned)
-        if match:
-            found = Decimal(match.group(1))
-    return found
+        match = _TOTAL_PREFIX.search(cleaned)
+        if match is None:
+            continue
+        parts = [part.strip() for part in cleaned[match.end():].split("=")]
+        if not parts:
+            continue
+        stated = _leading_amount(parts[-1])
+        if len(parts) >= 2:
+            added = evaluate_numeric(parts[-2])
+        else:
+            added = None
+            whole = evaluate_numeric(parts[0])
+            if whole is not None:
+                stated = whole
+    return added, stated
+
+
+def _leading_amount(text: str) -> Decimal | None:
+    match = _LEADING_AMOUNT.match(text)
+    if match is None:
+        return None
+    return Decimal(match.group(1))
 
 
 def _nodes_for_line(line: str, order: dict) -> list[str]:

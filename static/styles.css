@@ -185,3 +185,40 @@ button:disabled {
   margin: 1rem 0 0;
   line-height: 1.45;
 }
+
+#verification {
+  margin-top: 1.25rem;
+  padding: 0.9rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  border-radius: 0.5rem;
+}
+
+#verification.pass {
+  border-left-color: #2f6b45;
+}
+
+#verification.fail {
+  border-left-color: #8c2f2f;
+}
+
+#verification h3 {
+  margin-bottom: 0.4rem;
+}
+
+#verification-list {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+#verification-list li {
+  margin: 0.45rem 0;
+}
+
+.counterexample {
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-family: "Segoe UI", sans-serif;
+  font-size: 0.9rem;
+}

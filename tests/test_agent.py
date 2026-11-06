@@ -2,7 +2,9 @@
 
 import json
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
@@ -166,6 +168,14 @@ class ChatClientTests(unittest.TestCase):
 
 
 class ProposalRouteTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        main.set_data_directory(Path(self._tmp.name))
+
+    def tearDown(self):
+        main.set_data_directory(None)
+        self._tmp.cleanup()
+
     def test_missing_llm_credentials_is_503_and_paypal_is_not_called(self):
         env = {"LLM_API_KEY": "", "LLM_BASE_URL": "", "LLM_MODEL": ""}
         with patch.dict(os.environ, env, clear=False):
@@ -182,7 +192,7 @@ class ProposalRouteTests(unittest.TestCase):
                     "propose-1",
                     "propose_order",
                     {
-                        "reasoning": "One pack for the team.\n1 * 12.50 = 12.50",
+                        "reasoning": "One pack for the team.\n1 * 12.50 = 12.50\ntotal = 12.50",
                         "items": [{"sku": "NOTEBOOK-PACK", "quantity": 1}],
                     },
                 ),
@@ -201,7 +211,40 @@ class ProposalRouteTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["total_gbp"], "12.50")
         self.assertFalse(body["paypal_order_created"])
+        self.assertTrue(body["verification"]["passed"], body["verification"])
+        self.assertEqual(len(body["checkout_id"]), 32)
         self.assertNotIn("test-key", json.dumps(body))
+
+    def test_an_over_cap_proposal_is_blocked_and_has_no_checkout(self):
+        scripted = Scripted(
+            [
+                tool_call("search-1", "search_catalog", {"query": "laptop"}),
+                tool_call(
+                    "propose-1",
+                    "propose_order",
+                    {
+                        "reasoning": "1 * 749.00 = 749.00\ntotal = 749.00",
+                        "items": [{"sku": "LAPTOP-14", "quantity": 1}],
+                    },
+                ),
+            ]
+        )
+        env = {
+            "LLM_API_KEY": "test-key",
+            "LLM_BASE_URL": "https://api.groq.com/openai/v1",
+            "LLM_MODEL": "openai/gpt-oss-20b",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with patch.object(main, "chat_client_from_env", return_value=scripted):
+                with patch.object(PayPalClient, "create_order", side_effect=AssertionError("PayPal was called")):
+                    response = client.post("/api/proposals", json={"task": "Buy a laptop."})
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["total_gbp"], "749.00")
+        self.assertFalse(body["verification"]["passed"])
+        self.assertIn("max_per_order", {failure["rule_id"] for failure in body["verification"]["failures"]})
+        self.assertIsNone(body["checkout_id"])
+        self.assertFalse(body["paypal_order_created"])
 
     def test_upstream_failure_is_logged_with_the_status_code(self):
         class Failing:

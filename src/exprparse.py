@@ -102,6 +102,11 @@ def evaluate_calculation(parsed: dict) -> tuple[Decimal, Decimal] | None:
     return None
 
 
+def evaluate_numeric(expression: str) -> Decimal | None:
+    """Evaluate a pure numeric expression such as ``22.00 + 10.50``. No variables, no ``eval``."""
+    return _safe_eval_numeric(_clean(expression))
+
+
 def _clean(text: str) -> str:
     cleaned = (text or "").replace("£", "").replace("$", "").replace("%", "").replace(",", "")
     cleaned = cleaned.replace("×", "*").strip()

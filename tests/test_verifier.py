@@ -82,6 +82,34 @@ class VerifierTests(unittest.TestCase):
         self.assertTrue(result["passed"], result)
         self.assertEqual(result["failures"], [])
 
+    def test_a_pound_sign_in_the_stated_total_still_counts(self):
+        # The model often writes "Total = £12.50, well within the budget."
+        item = _item("NOTEBOOK-PACK")
+        reasoning = "1 x NOTEBOOK-PACK (£12.50) = £12.50\nTotal = £12.50, well within the £200 budget."
+        order = _order(item, total="12.50", reasoning=reasoning)
+        graph = _graph_for("Buy a notebook pack.", item, description="A notebook.")
+        result = verify(POLICY, order, graph, history=[], now=NOW)
+        self.assertTrue(result["passed"], result)
+
+    def test_a_sum_on_the_total_line_is_not_read_as_its_first_amount(self):
+        item = _item("NOTEBOOK-PACK")
+        graph = _graph_for("Buy office supplies.", item, description="A notebook.")
+        parts = "£22.00 + £10.50 + £37.50 + £4.50 + £4.80 + £4.20 + £6.99"
+        wrong = _order(
+            item,
+            total="90.49",
+            reasoning=f"1 x A4-BOX (£22.00) = £22.00\nTotal = {parts} = £95.98",
+        )
+        blocked = verify(POLICY, wrong, graph, history=[], now=NOW)
+        failure = _failure(blocked, "arithmetic_consistency")
+        self.assertEqual(failure["counterexample"]["added_gbp"], "90.49")
+        self.assertEqual(failure["counterexample"]["stated_gbp"], "95.98")
+        self.assertNotIn("22.00", failure["explanation"])
+
+        right = _order(item, total="90.49", reasoning=f"Total = {parts} = £90.49")
+        passed = verify(POLICY, right, graph, history=[], now=NOW)
+        self.assertTrue(passed["passed"], passed)
+
     def test_max_per_order_blocks_the_fifty_cable_basket(self):
         item = _item("USB-C-CABLE", quantity=50)
         order = _order(item, total="400.00", reasoning="50 * 8.00 = 400.00\ntotal = 400.00")
