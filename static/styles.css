@@ -20,7 +20,7 @@ body {
 }
 
 main {
-  max-width: 42rem;
+  max-width: 52rem;
   margin: 0 auto;
   padding: 3rem 1.25rem 4rem;
 }
@@ -221,4 +221,60 @@ button:disabled {
   color: var(--muted);
   font-family: "Segoe UI", sans-serif;
   font-size: 0.9rem;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem 1.25rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--line);
+  border-radius: 0.2rem;
+  background: var(--card);
+}
+
+.swatch.goal {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.swatch.purchase {
+  border-color: #2f6b45;
+}
+
+.swatch.flagged {
+  background: #f8efe9;
+  border-color: #8c2f2f;
+}
+
+#graph {
+  height: 28rem;
+  margin-top: 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+
+#graph-detail {
+  min-height: 1.4rem;
+  margin: 0.75rem 0 0;
+  line-height: 1.45;
+  color: var(--muted);
+  font-family: "Segoe UI", sans-serif;
 }

@@ -8,6 +8,7 @@
 
 let pageConfig = null;
 let paypalSdk = null;
+let graphView = null;
 
 function formatMoney(currency, value) {
   if (currency === "GBP") return `£${value}`;
@@ -168,6 +169,164 @@ function onSdkError() {
   }
 }
 
+function clearGraph() {
+  if (graphView) {
+    graphView.destroy();
+    graphView = null;
+  }
+  const detail = document.getElementById("graph-detail");
+  if (detail) detail.textContent = "";
+}
+
+function clip(text, max) {
+  const value = String(text || "").replace(/\s+/g, " ").trim();
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 1)}…`;
+}
+
+function nodeLabel(node) {
+  const id = String(node.id || "");
+  if (node.type === "goal") return clip(node.text || "Goal", 80);
+  if (id.endsWith(":quantity")) return "Quantity from the listing";
+  if (id.startsWith("listing:")) return node.sku || id;
+  return clip(node.text || id, 48);
+}
+
+function renderGraph(graph, verification) {
+  clearGraph();
+  const container = document.getElementById("graph");
+  const detail = document.getElementById("graph-detail");
+  if (!graph || !Array.isArray(graph.nodes) || graph.nodes.length === 0) {
+    detail.textContent = "This proposal has no graph.";
+    return;
+  }
+  if (!window.cytoscape) {
+    detail.textContent = "The graph library did not load. Refresh the page.";
+    return;
+  }
+
+  const flagged = new Set(graph.highlights || []);
+  for (const failure of (verification && verification.failures) || []) {
+    for (const id of failure.node_ids || []) flagged.add(id);
+  }
+
+  const elements = [];
+  for (const node of graph.nodes) {
+    elements.push({
+      data: {
+        id: node.id,
+        label: nodeLabel(node),
+        full: node.text || node.id,
+        kind: node.type || "claim",
+        flagged: flagged.has(node.id) ? "yes" : "no",
+      },
+    });
+  }
+  for (const edge of graph.edges || []) {
+    if (!edge.source || !edge.target) continue;
+    // The stored edge says the source is supported by the target.
+    // Draw the arrow from that support toward the line that relies on it.
+    elements.push({
+      data: {
+        id: `${edge.target}__${edge.source}`,
+        source: edge.target,
+        target: edge.source,
+      },
+    });
+  }
+
+  graphView = window.cytoscape({
+    container,
+    elements,
+    layout: {
+      name: "breadthfirst",
+      directed: true,
+      padding: 28,
+      spacingFactor: 1.25,
+    },
+    minZoom: 0.35,
+    maxZoom: 2,
+    wheelSensitivity: 0.25,
+    style: [
+      {
+        selector: "node",
+        style: {
+          label: "data(label)",
+          "text-wrap": "wrap",
+          "text-max-width": "130px",
+          "font-size": "12px",
+          "font-family": "Segoe UI, sans-serif",
+          color: "#1c1915",
+          "text-valign": "center",
+          "text-halign": "center",
+          "background-color": "#fffdf8",
+          "border-width": 2,
+          "border-color": "#d9d0c1",
+          width: 150,
+          height: 52,
+          shape: "round-rectangle",
+        },
+      },
+      {
+        selector: 'node[kind = "goal"]',
+        style: {
+          "background-color": "#1c1915",
+          color: "#f3efe6",
+          "border-color": "#1c1915",
+          width: 210,
+          height: 68,
+          "text-max-width": "190px",
+        },
+      },
+      {
+        selector: 'node[kind = "purchase"]',
+        style: { "border-color": "#2f6b45", width: 170 },
+      },
+      {
+        selector: 'node[flagged = "yes"]',
+        style: {
+          "background-color": "#f8efe9",
+          "border-color": "#8c2f2f",
+          "border-width": 3,
+          color: "#1c1915",
+        },
+      },
+      {
+        selector: "edge",
+        style: {
+          width: 1.5,
+          "line-color": "#5c564c",
+          "target-arrow-color": "#5c564c",
+          "target-arrow-shape": "triangle",
+          "curve-style": "bezier",
+          "arrow-scale": 0.85,
+        },
+      },
+      {
+        selector: "node:selected",
+        style: { "overlay-opacity": 0.12, "overlay-color": "#1c1915" },
+      },
+    ],
+  });
+
+  graphView.on("tap", "node", (event) => {
+    detail.textContent = event.target.data("full");
+  });
+
+  const prefer = (graph.highlights && graph.highlights[0]) || [...flagged][0];
+  let chosen = prefer ? graphView.getElementById(prefer) : graphView.nodes().first();
+  if (!chosen || chosen.empty()) chosen = graphView.nodes().first();
+  if (chosen && chosen.nonempty()) {
+    chosen.select();
+    detail.textContent = chosen.data("full");
+  }
+  requestAnimationFrame(() => {
+    if (!graphView) return;
+    graphView.resize();
+    graphView.fit(undefined, 28);
+  });
+}
+
 function renderVerification(verification) {
   const box = document.getElementById("verification");
   const heading = document.getElementById("verification-heading");
@@ -229,6 +388,7 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
   submit.disabled = true;
   card.hidden = true;
   clearPayPalButton();
+  clearGraph();
   document.getElementById("verification").hidden = true;
   showResult("");
   message.textContent = "Asking the agent. It may search the catalog a few times.";
@@ -259,8 +419,9 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
     document.getElementById("proposal-note").textContent = body.note;
     document.getElementById("proposal-total").textContent = `Total £${body.total_gbp}`;
     document.getElementById("proposal-reasoning").textContent = body.reasoning;
-    renderVerification(body.verification);
     card.hidden = false;
+    renderGraph(body.graph, body.verification);
+    renderVerification(body.verification);
     const rounds = `Proposed in ${body.rounds} model call${body.rounds === 1 ? "" : "s"}.`;
     if (body.verification.passed) {
       message.textContent = `${rounds} The check passed.`;

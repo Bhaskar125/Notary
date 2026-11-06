@@ -68,6 +68,8 @@ class OrdersApiTests(unittest.TestCase):
         page = client.get("/")
         self.assertEqual(page.status_code, 200)
         self.assertIn("PayPal appears only after every rule passes", page.text)
+        self.assertIn('id="graph"', page.text)
+        self.assertIn("cytoscape@3.30.4", page.text)
         self.assertIn("web-sdk/v6/core", page.text)
         self.assertIn("Propose a basket", page.text)
         self.assertNotIn("hardcoded", page.text.casefold())
