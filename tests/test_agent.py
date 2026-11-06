@@ -65,6 +65,8 @@ class AgentLoopTests(unittest.TestCase):
         self.assertEqual(proposal["items"][0]["unit_price_gbp"], "12.50")
         self.assertFalse(proposal["paypal_order_created"])
         self.assertIn("2 * 12.50 = 25.00", proposal["reasoning"])
+        self.assertEqual(proposal["graph"]["highlights"], [])
+        self.assertIn("goal", [edge["target"] for edge in proposal["graph"]["edges"]])
         # The second model call can see the notebook description the search returned.
         second_request = json.dumps(scripted.sent[1])
         self.assertIn("NOTEBOOK-PACK", second_request)
@@ -89,6 +91,12 @@ class AgentLoopTests(unittest.TestCase):
         proposal = run_agent("We need a USB-C cable.", CATALOG, scripted)
         self.assertEqual(proposal["total_gbp"], "400.00")
         self.assertEqual(proposal["items"][0]["quantity"], 50)
+        self.assertIn("purchase:USB-C-CABLE", proposal["graph"]["highlights"])
+        purchase_edges = [
+            edge for edge in proposal["graph"]["edges"] if edge["source"] == "purchase:USB-C-CABLE"
+        ]
+        self.assertEqual(purchase_edges[0]["target"], "listing:USB-C-CABLE")
+        self.assertNotIn("goal", [edge["target"] for edge in purchase_edges])
         correction = json.dumps(scripted.sent[1])
         self.assertIn("Read these SKUs", correction)
 
@@ -98,9 +106,14 @@ class AgentLoopTests(unittest.TestCase):
             run_agent("Buy paper", CATALOG, scripted)
 
 
+def seen_count(handler) -> int:
+    return getattr(handler, "calls", 0)
+
+
 class ChatClientTests(unittest.TestCase):
     def test_complete_posts_tools_and_hides_the_key_from_errors(self):
         def handler(request: httpx.Request) -> httpx.Response:
+            handler.calls = getattr(handler, "calls", 0) + 1
             self.assertEqual(request.url.path, "/openai/v1/chat/completions")
             self.assertEqual(request.headers["authorization"], "Bearer super-secret-key")
             body = json.loads(request.content)
@@ -118,6 +131,38 @@ class ChatClientTests(unittest.TestCase):
             chat.complete([{"role": "user", "content": "hi"}], [{"type": "function", "function": {"name": "search_catalog"}}])
         self.assertEqual(caught.exception.status_code, 401)
         self.assertNotIn("super-secret-key", str(caught.exception))
+        self.assertEqual(seen_count(handler), 1)
+
+    def test_tool_use_failed_is_retried_once(self):
+        calls = {"n": 0}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return httpx.Response(
+                    400,
+                    json={
+                        "error": {
+                            "message": "Failed to call a function. Please adjust your prompt.",
+                            "code": "tool_use_failed",
+                            "failed_generation": "<tool_call>not json",
+                        }
+                    },
+                )
+            return httpx.Response(
+                200,
+                json={"choices": [{"message": {"role": "assistant", "content": "ok"}}]},
+            )
+
+        chat = ChatClient(
+            "super-secret-key",
+            "https://api.groq.com/openai/v1",
+            "openai/gpt-oss-20b",
+            http=httpx.Client(transport=httpx.MockTransport(handler), base_url="https://api.groq.com/openai/v1"),
+        )
+        message = chat.complete([{"role": "user", "content": "hi"}], [])
+        self.assertEqual(message["content"], "ok")
+        self.assertEqual(calls["n"], 2)
 
 
 class ProposalRouteTests(unittest.TestCase):
@@ -157,6 +202,35 @@ class ProposalRouteTests(unittest.TestCase):
         self.assertEqual(body["total_gbp"], "12.50")
         self.assertFalse(body["paypal_order_created"])
         self.assertNotIn("test-key", json.dumps(body))
+
+    def test_upstream_failure_is_logged_with_the_status_code(self):
+        class Failing:
+            def complete(self, messages, tools):
+                raise LLMError(
+                    "The model `llama-3.3-70b-versatile` does not exist",
+                    404,
+                    code="model_not_found",
+                    body_text='{"error":{"code":"model_not_found"}}',
+                )
+
+            def close(self):
+                pass
+
+        env = {
+            "LLM_API_KEY": "test-key",
+            "LLM_BASE_URL": "https://api.groq.com/openai/v1",
+            "LLM_MODEL": "openai/gpt-oss-20b",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with patch.object(main, "chat_client_from_env", return_value=Failing()):
+                with self.assertLogs("notary.proposals", level="WARNING") as captured:
+                    response = client.post("/api/proposals", json={"task": "Buy a notebook pack"})
+        self.assertEqual(response.status_code, 502)
+        detail = response.json()["detail"]
+        self.assertEqual(detail["upstream_status"], 404)
+        self.assertEqual(detail["upstream_code"], "model_not_found")
+        self.assertIn("upstream_status=404", captured.output[0])
+        self.assertIn("model_not_found", captured.output[0])
 
     def test_config_reports_the_model_and_not_the_key(self):
         env = {

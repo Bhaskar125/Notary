@@ -182,10 +182,16 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
       return;
     }
     const list = document.getElementById("proposal-items");
+    const highlights = new Set((body.graph && body.graph.highlights) || []);
     list.replaceChildren();
     for (const item of body.items) {
       const row = document.createElement("li");
-      row.textContent = `${item.quantity} × ${item.name} (${item.merchant}) — £${item.unit_price_gbp} each, £${item.line_total_gbp}`;
+      const price = `${item.quantity} × ${item.name} (${item.merchant}) — £${item.unit_price_gbp} each, £${item.line_total_gbp}`;
+      if (highlights.has(`purchase:${item.sku}`)) {
+        row.textContent = `${price}. This quantity comes from the product listing, not the user's goal.`;
+      } else {
+        row.textContent = price;
+      }
       list.append(row);
     }
     document.getElementById("proposal-note").textContent = body.note;

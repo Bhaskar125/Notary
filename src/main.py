@@ -7,6 +7,7 @@ one hardcoded notebook pack, and only after the buyer approves the button.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -20,6 +21,8 @@ from pydantic import BaseModel, Field
 from src.agent import AgentError, ChatClient, LLMError, run_agent
 from src.catalog import Catalog, load_catalog
 from src.paypal_client import PayPalClient, PayPalError
+
+log = logging.getLogger("notary.proposals")
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
@@ -164,7 +167,20 @@ def create_proposal(body: ProposalRequest) -> dict:
     try:
         return run_agent(task, default_catalog(), client)
     except LLMError as exc:
-        raise HTTPException(status_code=502, detail=exc.message) from exc
+        log.warning(
+            "proposal failed upstream_status=%s code=%s body=%s",
+            exc.status_code,
+            exc.code,
+            exc.body_text,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": exc.message,
+                "upstream_status": exc.status_code,
+                "upstream_code": exc.code,
+            },
+        ) from exc
     except AgentError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:

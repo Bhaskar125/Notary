@@ -1,0 +1,20 @@
+# Demo spending policy. Figures are GBP.
+# A stationery basket under £200 passes max_per_order.
+# Fifty USB-C cables are £400 and fail it. The laptop at £749 fails it too.
+
+max_per_order_gbp: "200.00"
+max_per_period_gbp: "500.00"
+period_days: 7
+
+# Empty lists turn that rule off. A non-empty merchant list allows only those names.
+allowed_merchants:
+  - Desk & Co
+  - Kite Paper Co
+  - Northbeam IT
+  - Harbour Pantry
+  - Brightline Furniture
+
+blocked_categories:
+  - alcohol
+
+duplicate_window_hours: 24

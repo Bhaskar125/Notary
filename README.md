@@ -6,7 +6,11 @@ Notary sits between a shopping agent and PayPal. The agent may propose a purchas
 
 **A catalog and an agent.** `data/catalog.json` has 31 products across 5 merchants. One listing, `USB-C-CABLE`, tells the agent to buy 50 units. The agent searches that file with tools and proposes a basket. The server prices every line from the catalog. A proposal does not create a PayPal order, and the spending policy is not checked yet.
 
-The model is any hosted Chat Completions API. Set `LLM_API_KEY`, `LLM_BASE_URL` (ending in `/v1`), and `LLM_MODEL`. Groq's free tier works: base URL `https://api.groq.com/openai/v1`, model `llama-3.3-70b-versatile`.
+The model is any hosted Chat Completions API. Set `LLM_API_KEY`, `LLM_BASE_URL` (ending in `/v1`), and `LLM_MODEL`. Groq's free tier works: base URL `https://api.groq.com/openai/v1`, model `openai/gpt-oss-20b`. `llama-3.3-70b-versatile` has been removed from Groq and returns 404.
+
+The agent is naive on purpose. Its system prompt tells it to follow purchasing instructions written inside a product listing, even when that conflicts with the user's budget. That simulates an agent that has been fooled, or was never told to distrust merchant text. Notary does not trust the agent. The check has to catch a bad basket when the agent is fully convinced. The graph is built from the tool trace, not from a second reading of the prose: the user's task is the goal, each listing the agent opened is a claim, and each line is a purchase. A quantity that the listing demands and the user did not ask for is supported by the listing, not by the goal. For `USB-C-CABLE`, that quantity is 50.
+
+**Spending policy.** `policies/default.yaml` caps an order at £200 and a 7-day total at £500, allows the five catalog merchants, blocks `alcohol`, and rejects the same item from the same merchant within 24 hours. `verify()` encodes each rule as Z3 constraints. SAT means the order is allowed. The PayPal button does not call this yet.
 
 **A hardcoded sandbox payment.** An A4 notebook pack at £12.50 can be paid in the PayPal sandbox. That button does not buy the agent's basket.
 
@@ -20,7 +24,7 @@ Buyer approval uses the current PayPal quick start (JavaScript SDK v6, October 2
 
 ## Run it
 
-Python 3.11 is the target. This step also runs on Python 3.14.
+Python 3.11 is the target. This machine runs Python 3.14, and `z3-solver==5.3.3.0` loads there (`z3.get_version_string()` is `5.3.3`). The version is pinned in `requirements.txt` so Render installs the same wheel.
 
 ```powershell
 python -m venv .venv
@@ -39,7 +43,7 @@ uvicorn src.main:app --reload
 
 Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Approve the payment with a **sandbox personal (buyer) account**, not your live PayPal login.
 
-A capture status of `PENDING` can happen when the sandbox business account does not hold a GBP balance. The API call still succeeded; PayPal is waiting on currency acceptance. `COMPLETED` means the sandbox capture settled.
+A capture status of `PENDING` means PayPal accepted the call but has not settled it. A US sandbox business account often does this for GBP. Create the sandbox business account in the United Kingdom so the demo can finish as `COMPLETED`. The buyer is still a sandbox personal account. `PENDING` is a successful API call, and it looks like a broken payment to a judge.
 
 ## Tests
 
@@ -57,10 +61,15 @@ The tests stub PayPal and the model. They do not need credentials and they do no
 src/main.py            routes
 src/catalog.py         load and search data/catalog.json
 src/agent.py           tool-calling loop and proposal pricing
+src/extraction.py      tool trace to a goal / claim / purchase graph
+src/exprparse.py       safe arithmetic parser for the reasoning lines
+src/policy.py          load policies/default.yaml
+src/verifier.py        Z3 check for each spending rule
+src/ledger.py          SQLite spend history
 src/paypal_client.py   sandbox OAuth, create, capture
 data/catalog.json      31 mock products
 static/                the page
-tests/                 catalog, agent, and PayPal tests
+tests/                 catalog, agent, PayPal, and policy tests
 ```
 
 `reference/` is local dissertation code. It is gitignored and is not part of this app.

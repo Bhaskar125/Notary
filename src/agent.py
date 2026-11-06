@@ -12,12 +12,16 @@ is kept in `reasoning` for the later checker, and is not trusted for the total.
 from __future__ import annotations
 
 import json
+import logging
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 
 import httpx
 
 from src.catalog import Catalog, order_total, price_lines
+from src.extraction import build_graph
+
+log = logging.getLogger("notary.agent")
 
 MAX_ROUNDS = 6
 
@@ -109,10 +113,12 @@ class AgentError(Exception):
 
 
 class LLMError(Exception):
-    def __init__(self, message: str, status_code: int):
+    def __init__(self, message: str, status_code: int, *, code: str | None = None, body_text: str = ""):
         super().__init__(message)
         self.message = message
         self.status_code = status_code
+        self.code = code
+        self.body_text = body_text
 
 
 class Completer(Protocol):
@@ -142,6 +148,16 @@ class ChatClient:
             self._http.close()
 
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
+        try:
+            return self._complete_once(messages, tools)
+        except LLMError as exc:
+            if not _is_tool_use_failed(exc):
+                raise
+            # Llama-family models often emit one malformed tool call and then a valid one.
+            log.warning("tool_use_failed (status %s). Retrying this model call once.", exc.status_code)
+            return self._complete_once(messages, tools)
+
+    def _complete_once(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
         response = self._http.post(
             "/chat/completions",
             headers={"Authorization": f"Bearer {self._api_key}"},
@@ -151,6 +167,9 @@ class ChatClient:
                 "tools": tools,
                 "tool_choice": "auto",
                 "temperature": 0.2,
+                # Groq otherwise reserves 2048 output tokens, which is over the
+                # limit on the free tier of some models and comes back as 429.
+                "max_tokens": 1024,
             },
         )
         try:
@@ -159,7 +178,15 @@ class ChatClient:
             body = {"raw": response.text}
         if response.status_code >= 400:
             message = _error_message(body) or response.reason_phrase
-            raise LLMError(str(message), response.status_code)
+            code = _error_code(body)
+            body_text = _public_body(body, self._api_key)
+            log.warning(
+                "LLM request failed status=%s code=%s body=%s",
+                response.status_code,
+                code,
+                body_text,
+            )
+            raise LLMError(str(message), response.status_code, code=code, body_text=body_text)
         choices = body.get("choices") if isinstance(body, dict) else None
         if not choices or not isinstance(choices[0], dict):
             raise LLMError("The model response had no choices.", response.status_code)
@@ -171,6 +198,7 @@ class ChatClient:
 
 def run_agent(task: str, catalog: Catalog, client: Completer) -> dict[str, Any]:
     seen: set[str] = set()
+    trace: list[dict[str, Any]] = []
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _system_prompt(catalog)},
         {"role": "user", "content": task},
@@ -201,11 +229,13 @@ def run_agent(task: str, catalog: Catalog, client: Completer) -> dict[str, Any]:
             if name == "search_catalog":
                 payload, found = _search(catalog, args)
                 seen.update(found)
+                _remember(trace, "search_catalog", args, payload.get("products"))
                 messages.append(_tool_message(call_id, payload))
             elif name == "get_product":
                 payload, sku = _get_product(catalog, args)
                 if sku:
                     seen.add(sku)
+                    _remember(trace, "get_product", args, [payload])
                 messages.append(_tool_message(call_id, payload))
             elif name == "propose_order":
                 if proposal is not None:
@@ -219,6 +249,8 @@ def run_agent(task: str, catalog: Catalog, client: Completer) -> dict[str, Any]:
             proposal["task"] = task
             proposal["note"] = "No PayPal order was created. The spending policy is not checked yet."
             proposal["rounds"] = sum(1 for item in messages if item.get("role") == "assistant")
+            proposal["trace"] = trace
+            proposal["graph"] = build_graph(task, trace, proposal["items"])
             return proposal
     raise AgentError("The model did not submit a basket within 6 rounds. Try the task again.")
 
@@ -331,6 +363,57 @@ def _propose(
         "paypal_order_created": False,
     }
     return {"ok": True, "total_gbp": proposal["total_gbp"]}, proposal
+
+
+def _remember(trace: list[dict[str, Any]], tool: str, args: dict[str, Any], products: object) -> None:
+    if not isinstance(products, list):
+        return
+    kept = []
+    for product in products:
+        if not isinstance(product, dict) or not product.get("sku"):
+            continue
+        kept.append(
+            {
+                "sku": product.get("sku"),
+                "name": product.get("name"),
+                "description": product.get("description") or "",
+            }
+        )
+    if not kept:
+        return
+    trace.append(
+        {
+            "tool": tool,
+            "arguments": {
+                key: args.get(key)
+                for key in ("query", "sku", "merchant", "category")
+                if args.get(key) not in (None, "")
+            },
+            "products": kept,
+        }
+    )
+
+
+def _is_tool_use_failed(exc: LLMError) -> bool:
+    blob = f"{exc.code or ''} {exc.message}".lower()
+    return "tool_use_failed" in blob or "failed to call a function" in blob
+
+
+def _error_code(body: object) -> str | None:
+    if isinstance(body, dict) and isinstance(body.get("error"), dict):
+        code = body["error"].get("code")
+        if code:
+            return str(code)
+    return None
+
+
+def _public_body(body: object, secret: str) -> str:
+    text = json.dumps(body, default=str) if isinstance(body, (dict, list)) else str(body)
+    if secret:
+        text = text.replace(secret, "[redacted]")
+    if len(text) > 1500:
+        return text[:1500] + "…"
+    return text
 
 
 def _error_message(body: object) -> str | None:
