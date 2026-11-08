@@ -38,6 +38,12 @@ function clearPayPalButton() {
   document.getElementById("paypal-button-container").replaceChildren();
 }
 
+function setProposalVisible(visible) {
+  document.getElementById("proposal").hidden = !visible;
+  const empty = document.getElementById("result-empty");
+  if (empty) empty.hidden = visible;
+}
+
 async function onLoad() {
   try {
     const response = await fetch("/api/config");
@@ -255,7 +261,7 @@ function renderGraph(graph, verification) {
           "text-wrap": "wrap",
           "text-max-width": "130px",
           "font-size": "12px",
-          "font-family": "Segoe UI, sans-serif",
+          "font-family": "Outfit, Segoe UI, sans-serif",
           color: "#1c1915",
           "text-valign": "center",
           "text-halign": "center",
@@ -375,18 +381,25 @@ function counterexampleText(example) {
   return parts.join("; ");
 }
 
+document.querySelectorAll("[data-example]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const field = document.getElementById("task");
+    field.value = button.dataset.example;
+    field.focus();
+  });
+});
+
 document.getElementById("task-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const task = document.getElementById("task").value.trim();
   const message = document.getElementById("proposal-message");
-  const card = document.getElementById("proposal");
   const submit = document.getElementById("task-submit");
   if (!task) {
     message.textContent = "Tell the agent what to buy.";
     return;
   }
   submit.disabled = true;
-  card.hidden = true;
+  setProposalVisible(false);
   clearPayPalButton();
   clearGraph();
   document.getElementById("verification").hidden = true;
@@ -408,18 +421,30 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
     list.replaceChildren();
     for (const item of body.items) {
       const row = document.createElement("li");
-      const price = `${item.quantity} × ${item.name} (${item.merchant}) — £${item.unit_price_gbp} each, £${item.line_total_gbp}`;
-      if (highlights.has(`purchase:${item.sku}`)) {
-        row.textContent = `${price}. This quantity comes from the product listing, not the user's goal.`;
-      } else {
-        row.textContent = price;
+      const flagged = highlights.has(`purchase:${item.sku}`);
+      row.className = flagged ? "line flagged" : "line";
+      const name = document.createElement("span");
+      name.className = "line-name";
+      name.textContent = `${item.quantity} × ${item.name}`;
+      const meta = document.createElement("span");
+      meta.className = "line-meta";
+      meta.textContent = `${item.merchant} · £${item.unit_price_gbp} each`;
+      const amount = document.createElement("span");
+      amount.className = "line-amount";
+      amount.textContent = `£${item.line_total_gbp}`;
+      row.append(name, meta, amount);
+      if (flagged) {
+        const note = document.createElement("span");
+        note.className = "line-note";
+        note.textContent = "This quantity comes from the product listing, not the user's goal.";
+        row.append(note);
       }
       list.append(row);
     }
     document.getElementById("proposal-note").textContent = body.note;
     document.getElementById("proposal-total").textContent = `Total £${body.total_gbp}`;
     document.getElementById("proposal-reasoning").textContent = body.reasoning;
-    card.hidden = false;
+    setProposalVisible(true);
     renderGraph(body.graph, body.verification);
     renderVerification(body.verification);
     const rounds = `Proposed in ${body.rounds} model call${body.rounds === 1 ? "" : "s"}.`;

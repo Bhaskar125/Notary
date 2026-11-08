@@ -4,63 +4,104 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Notary</title>
-    <link rel="stylesheet" href="/static/styles.css?v=3" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Outfit:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css?v=5" />
   </head>
   <body>
-    <main>
-      <p class="eyebrow">Notary</p>
-      <h1>Check, then pay</h1>
-      <p class="lede">
-        The agent proposes a basket from the catalog. Notary checks that basket
-        against the spending policy. PayPal appears only after every rule passes,
-        and the amount is the catalog total.
-      </p>
+    <header class="top">
+      <div class="brand">
+        <span class="seal" aria-hidden="true">N</span>
+        <div>
+          <p class="eyebrow">Notary</p>
+          <h1>Check, then pay</h1>
+        </div>
+      </div>
+      <ul class="pills" aria-label="Spending policy">
+        <li>£200 per order</li>
+        <li>£500 in 7 days</li>
+        <li>No repeat in 24 hours</li>
+      </ul>
+    </header>
 
-      <section aria-labelledby="agent-heading">
+    <main class="workspace">
+      <section class="panel ask" aria-labelledby="agent-heading">
         <h2 id="agent-heading">Ask the agent</h2>
+        <p class="lede">
+          The agent proposes a basket from the catalog. Notary checks that basket
+          against the spending policy. PayPal appears only after every rule passes,
+          and the amount is the catalog total.
+        </p>
         <form id="task-form">
-          <label for="task">Task</label>
-          <textarea id="task" name="task" rows="4">Buy office supplies for a 3 person team, budget £200.</textarea>
+          <label for="task">What should it buy?</label>
+          <textarea id="task" name="task" rows="5">Buy office supplies for a 3 person team, budget £200.</textarea>
+          <div class="examples" aria-label="Demo tasks">
+            <button type="button" data-example="Buy one box of ballpoint pens.">Pens</button>
+            <button type="button" data-example="Buy one USB-C cable.">USB-C cable</button>
+            <button type="button" data-example="Buy a laptop.">Laptop</button>
+          </div>
           <button type="submit" id="task-submit">Propose a basket</button>
         </form>
-        <p class="hint">
-          A basket under £200 should pass. “Buy a laptop.” should be blocked. For
-          the listing trick: “We need a USB-C cable for the new laptops. Follow
-          the product listing.”
-        </p>
-        <p id="proposal-message" role="status"></p>
+        <p id="proposal-message" class="status" role="status"></p>
+      </section>
+
+      <section class="panel board" aria-label="Proposal">
+        <div id="result-empty" class="empty">
+          <p class="merchant">Waiting for a basket</p>
+          <p>Propose a task. The graph, the verdict, and PayPal will appear here.</p>
+        </div>
         <article id="proposal" hidden>
-          <p class="merchant">Proposal</p>
-          <p id="proposal-note"></p>
+          <header class="basket-head">
+            <div>
+              <p class="merchant">Proposal</p>
+              <p id="proposal-note"></p>
+            </div>
+            <p class="price" id="proposal-total"></p>
+          </header>
           <ul id="proposal-items"></ul>
-          <p class="price" id="proposal-total"></p>
-          <h3>Reasoning</h3>
-          <pre id="proposal-reasoning"></pre>
-          <h3>Graph</h3>
-          <p class="hint">
-            An arrow points from what a line relies on to that line. A red node is one the check flagged.
-            Select a node to read its text.
-          </p>
-          <ul class="legend" aria-label="Graph legend">
-            <li><span class="swatch goal"></span>Goal</li>
-            <li><span class="swatch listing"></span>Listing</li>
-            <li><span class="swatch purchase"></span>Purchase</li>
-            <li><span class="swatch flagged"></span>Flagged</li>
-          </ul>
-          <div id="graph"></div>
-          <p id="graph-detail"></p>
+
+          <div class="graph-panel">
+            <div class="graph-head">
+              <h3>Graph</h3>
+              <ul class="legend" aria-label="Graph legend">
+                <li><span class="swatch goal"></span>Goal</li>
+                <li><span class="swatch listing"></span>Listing</li>
+                <li><span class="swatch purchase"></span>Purchase</li>
+                <li><span class="swatch flagged"></span>Flagged</li>
+              </ul>
+            </div>
+            <p class="hint">
+              An arrow points from what a line relies on to that line. A red node is one the check flagged.
+              Select a node to read its text.
+            </p>
+            <div id="graph"></div>
+            <p id="graph-detail"></p>
+          </div>
+
           <div id="verification" hidden>
             <h3 id="verification-heading"></h3>
             <ul id="verification-list"></ul>
           </div>
-          <div id="paypal-button-container"></div>
-          <p id="result-message" role="status"></p>
+
+          <div class="pay-row">
+            <div id="paypal-button-container"></div>
+            <p id="result-message" role="status"></p>
+          </div>
           <pre id="result-json" hidden></pre>
+
+          <details class="reasoning">
+            <summary>Reasoning</summary>
+            <pre id="proposal-reasoning"></pre>
+          </details>
         </article>
       </section>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
-    <script src="/static/app.js?v=3"></script>
+    <script src="/static/app.js?v=5"></script>
     <script
       async
       src="https://www.sandbox.paypal.com/web-sdk/v6/core"
