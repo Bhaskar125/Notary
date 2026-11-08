@@ -378,6 +378,39 @@ textarea:focus {
   border-color: var(--red);
 }
 
+.swatch.suggestion {
+  background: #f8edd6;
+  border-color: #8a5a12;
+  border-style: dashed;
+}
+
+#suggestions {
+  margin-top: 0.85rem;
+  padding: 0.85rem 0.95rem 0.7rem;
+  border: 1px dashed #c4a36a;
+  border-radius: 0.85rem;
+  background: #fbf6ec;
+}
+
+#suggestions h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.2rem;
+  color: #6d4a10;
+}
+
+#suggestion-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+#suggestion-list li {
+  margin: 0.35rem 0;
+}
+
+.suggestion-total {
+  font-weight: 600;
+}
+
 #graph {
   height: 30rem;
   margin-top: 0.7rem;

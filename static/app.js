@@ -182,6 +182,10 @@ function clearGraph() {
   }
   const detail = document.getElementById("graph-detail");
   if (detail) detail.textContent = "";
+  const suggestions = document.getElementById("suggestions");
+  const suggestionList = document.getElementById("suggestion-list");
+  if (suggestionList) suggestionList.replaceChildren();
+  if (suggestions) suggestions.hidden = true;
 }
 
 function clip(text, max) {
@@ -194,6 +198,7 @@ function nodeLabel(node) {
   const id = String(node.id || "");
   if (node.type === "goal") return clip(node.text || "Goal", 80);
   if (id.endsWith(":quantity")) return "Quantity from the listing";
+  if (node.type === "suggestion") return node.saves_gbp ? `Save £${node.saves_gbp}` : "Save";
   if (id.startsWith("listing:")) return node.sku || id;
   return clip(node.text || id, 48);
 }
@@ -230,13 +235,16 @@ function renderGraph(graph, verification) {
   }
   for (const edge of graph.edges || []) {
     if (!edge.source || !edge.target) continue;
-    // The stored edge says the source is supported by the target.
-    // Draw the arrow from that support toward the line that relies on it.
+    // Support is stored as "this line is supported by that node".
+    // Draw the arrow from the support toward the line that relies on it.
+    // A suggestion hangs off the purchase, so that arrow stays as stored.
+    const advice = edge.relation === "suggests";
     elements.push({
       data: {
-        id: `${edge.target}__${edge.source}`,
-        source: edge.target,
-        target: edge.source,
+        id: `${edge.source}__${edge.target}`,
+        source: advice ? edge.source : edge.target,
+        target: advice ? edge.target : edge.source,
+        relation: edge.relation || "supported_by",
       },
     });
   }
@@ -289,6 +297,17 @@ function renderGraph(graph, verification) {
         style: { "border-color": "#2f6b45", width: 170 },
       },
       {
+        selector: 'node[kind = "suggestion"]',
+        style: {
+          "background-color": "#f8edd6",
+          "border-color": "#8a5a12",
+          "border-style": "dashed",
+          width: 128,
+          height: 46,
+          "font-size": "12px",
+        },
+      },
+      {
         selector: 'node[flagged = "yes"]',
         style: {
           "background-color": "#f8efe9",
@@ -306,6 +325,14 @@ function renderGraph(graph, verification) {
           "target-arrow-shape": "triangle",
           "curve-style": "bezier",
           "arrow-scale": 0.85,
+        },
+      },
+      {
+        selector: 'edge[relation = "suggests"]',
+        style: {
+          "line-style": "dashed",
+          "line-color": "#8a5a12",
+          "target-arrow-color": "#8a5a12",
         },
       },
       {
@@ -331,6 +358,24 @@ function renderGraph(graph, verification) {
     graphView.resize();
     graphView.fit(undefined, 28);
   });
+  renderSuggestions(graph);
+}
+
+function renderSuggestions(graph) {
+  const box = document.getElementById("suggestions");
+  const list = document.getElementById("suggestion-list");
+  const notes = (graph && graph.suggestions) || [];
+  if (!box || !list || notes.length === 0) return;
+  const saved = document.createElement("li");
+  saved.className = "suggestion-total";
+  saved.textContent = `A cheaper basket would cost £${graph.savings_gbp} less. PayPal still charges the basket the agent proposed.`;
+  list.append(saved);
+  for (const note of notes) {
+    const row = document.createElement("li");
+    row.textContent = note.text;
+    list.append(row);
+  }
+  box.hidden = false;
 }
 
 function renderVerification(verification) {
