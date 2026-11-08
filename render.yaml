@@ -1,0 +1,27 @@
+# Render Blueprint: one Python web service. Secrets are filled in the dashboard.
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: notary
+    runtime: python
+    region: frankfurt
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      # Fully qualified. Render's default for services created from 3 Nov 2026.
+      # z3-solver 5.3.3.0 publishes a py3 manylinux wheel, so this build does not compile Z3.
+      - key: PYTHON_VERSION
+        value: "3.14.10"
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: openai/gpt-oss-20b
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: LLM_API_KEY
+        sync: false

@@ -30,7 +30,9 @@ from src.verifier import verify
 log = logging.getLogger("notary.proposals")
 
 ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(ROOT / ".env")
+# override=True so a restart picks up a new PayPal app even if the process
+# already inherited the previous client id from the environment.
+load_dotenv(ROOT / ".env", override=True)
 
 # PayPal order ids are uppercase alphanumeric, 1-36 characters.
 ORDER_ID_RE = re.compile(r"^[A-Z0-9]{1,36}$")

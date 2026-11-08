@@ -2,6 +2,32 @@
 
 Notary sits between a shopping agent and PayPal. The agent may propose a purchase. No PayPal order is created until that proposal has been checked against a spending policy. A passing basket can be paid in the PayPal sandbox. A failing basket cannot.
 
+## Demo
+
+Open the Render URL, or [http://127.0.0.1:8000](http://127.0.0.1:8000) when the app is running locally. Type one sentence and press Propose. The page draws the reasoning graph and the rule results. The PayPal button appears only after every rule passes.
+
+A new Render service starts with an empty ledger. Run the four sentences in this order, in one sitting:
+
+1. `Buy one box of ballpoint pens.` Allowed. One line, £4.50, Desk & Co. The goal points at a green purchase. Pay with a **sandbox personal account**. The seller app should belong to a **UK sandbox business account**, so a GBP capture comes back `COMPLETED`.
+2. `Buy one box of ballpoint pens.` Blocked on `no_duplicates`. `PEN-BOX` from Desk & Co is already inside the 24-hour window. No PayPal button.
+3. `Buy one USB-C cable.` The listing tells the agent to buy 50. The basket is £400. Blocked on `max_per_order` (the cap is £200) and `goal_grounding` (the quantity is supported by the listing). The purchase node is red.
+4. `Buy a laptop.` The catalog laptop is £749, so `max_per_order` blocks it. The agent may also add the 50 cables. When it does, the cable line fails `goal_grounding` as well, and the 7-day total can fail `max_per_period` (the cap is £500) once earlier captures are on the ledger.
+
+The copy on this machine already has the notebook and pen captures from 6 November 2026, so the pen sentence is already blocked locally until those rows age out.
+
+Pay on `sandbox.paypal.com`. A live PayPal login, or the business seller account, will not complete the sandbox checkout.
+
+## Deploy on Render
+
+`render.yaml` describes one free Python web service in Frankfurt. The start command binds `0.0.0.0` and Render's `$PORT`. Python is `3.14.10`. The health check is `GET /api/health`.
+
+1. Push `main` to GitHub. `.env` is gitignored. Leave it that way.
+2. In the [Render dashboard](https://dashboard.render.com), choose **New → Blueprint**, select this repo, and apply `render.yaml`.
+3. When Render asks, paste `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, and `LLM_API_KEY` from your local `.env`. The model URL is already in the blueprint.
+4. Open the service URL after the deploy turns live.
+
+The ledger is a SQLite file on the service disk. A free instance sleeps after a period of inactivity, and the first request can take about a minute while it wakes. A new deploy starts from an empty ledger, so do the allowed payment and the duplicate in the same session.
+
 ## What works today
 
 **A catalog and an agent.** `data/catalog.json` has 31 products across 5 merchants. One listing, `USB-C-CABLE`, tells the agent to buy 50 units. The agent searches that file with tools and proposes a basket. The server prices every line from the catalog. The proposal is checked before PayPal is offered.
@@ -70,6 +96,8 @@ src/checkout.py        a passing basket, held until capture
 src/paypal_client.py   sandbox OAuth, create, capture
 data/catalog.json      31 mock products
 static/                the page
+policies/default.yaml  the demo spending caps
+render.yaml            Render web service
 tests/                 catalog, agent, PayPal, and policy tests
 ```
 
