@@ -321,6 +321,31 @@ class OrdersApiTests(unittest.TestCase):
         self.assertEqual(statuses[:10], [200] * 10)
         self.assertEqual(statuses[10], 429)
 
+    def test_forwarded_for_limits_each_visitor_not_the_proxy(self):
+        def quiet(task, catalog, chat):
+            return {
+                "items": [],
+                "total_gbp": "0.00",
+                "reasoning": "total = 0.00",
+                "rounds": 1,
+                "graph": {"nodes": [], "edges": [], "highlights": []},
+            }
+
+        def post(forwarded: str):
+            return client.post(
+                "/api/proposals",
+                json={"task": "Buy pens"},
+                headers={"X-Forwarded-For": forwarded},
+            ).status_code
+
+        with patch.object(main, "run_agent", side_effect=quiet):
+            first_visitor = [post("203.0.113.5, 10.0.0.4") for _ in range(10)]
+            blocked = post("203.0.113.5, 10.0.0.4")
+            second_visitor = post("203.0.113.9, 10.0.0.4")
+        self.assertEqual(first_visitor, [200] * 10)
+        self.assertEqual(blocked, 429)
+        self.assertEqual(second_visitor, 200)
+
 
 if __name__ == "__main__":
     unittest.main()

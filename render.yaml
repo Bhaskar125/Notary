@@ -8,7 +8,9 @@ services:
     plan: free
     branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    # proxy-headers trusts X-Forwarded-For from Render. Without it every judge
+    # shares request.client.host and one proposal limit.
+    startCommand: "uvicorn src.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=\"*\""
     healthCheckPath: /api/health
     envVars:
       # Fully qualified. Render's default for services created from 3 Nov 2026.

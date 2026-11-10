@@ -143,14 +143,25 @@ async def attach_session(request: Request, call_next):
 
 
 def _caller(request: Request) -> str:
-    # Render appends the connecting address. The last hop is the one the proxy saw.
+    """The visitor, not Render's proxy.
+
+    With ``--proxy-headers --forwarded-allow-ips=*``, uvicorn sets
+    ``request.client`` from the first address in ``X-Forwarded-For``.
+    TestClient does not run that middleware, so when the header is present
+    we apply the same rule here. The last address is a proxy hop and would
+    put every judge in one bucket.
+    """
     forwarded = request.headers.get("x-forwarded-for", "")
-    parts = [part.strip() for part in forwarded.split(",") if part.strip()]
-    if parts:
-        return parts[-1][:80]
-    if request.client is None:
+    first = forwarded.split(",")[0].strip()
+    if first:
+        if first.startswith("[") and "]" in first:
+            first = first[1 : first.index("]")]
+        elif first.count(":") == 1:
+            first = first.split(":", 1)[0]
+        return first[:80]
+    if request.client is None or not request.client.host:
         return "unknown"
-    return request.client.host
+    return request.client.host[:80]
 
 
 def _proposal_allowed(request: Request) -> bool:

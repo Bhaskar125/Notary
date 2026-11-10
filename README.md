@@ -19,7 +19,7 @@ Each browser gets its own ledger, stored in a cookie. One judge paying for pens 
 
 ## Deploy on Render
 
-`render.yaml` describes one free Python web service in Frankfurt. The start command binds `0.0.0.0` and Render's `$PORT`. Python is `3.14.10`. The health check is `GET /api/health`.
+`render.yaml` describes one free Python web service in Frankfurt. The start command binds `0.0.0.0` and Render's `$PORT`, and it trusts `X-Forwarded-For` (`--proxy-headers --forwarded-allow-ips=*`) so the proposal limit is per visitor rather than one bucket for every judge. Python is `3.14.10`. The health check is `GET /api/health`.
 
 1. Push `main` to GitHub. `.env` is gitignored. Leave it that way.
 2. In the [Render dashboard](https://dashboard.render.com), choose **New → Blueprint**, select this repo, and apply `render.yaml`.
