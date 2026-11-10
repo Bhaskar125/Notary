@@ -10,11 +10,13 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import datetime, timezone
+import time
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -38,6 +40,15 @@ load_dotenv(ROOT / ".env", override=True)
 ORDER_ID_RE = re.compile(r"^[A-Z0-9]{1,36}$")
 # PayPal accepted the capture. PENDING is what a US sandbox account often returns for GBP.
 _RECORDABLE = {"COMPLETED", "PENDING"}
+# One browser, one ledger. A shared file would make judge A's pen purchase
+# block judge B's happy path for 24 hours.
+SESSION_COOKIE = "notary_session"
+_SESSION_RE = re.compile(r"^[a-f0-9]{32}$")
+CHECKOUT_TTL = timedelta(minutes=30)
+# A public URL can burn the model quota. Ten proposals a minute per caller.
+_PROPOSAL_LIMIT = 10
+_PROPOSAL_WINDOW_SECONDS = 60.0
+_proposal_hits: dict[str, list[float]] = {}
 
 app = FastAPI(title="Notary", version="0.1.0")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
@@ -111,6 +122,47 @@ def set_data_directory(path: Path | None) -> None:
     _data_dir = path
     _ledger = None
     _checkouts = None
+    _proposal_hits.clear()
+
+
+@app.middleware("http")
+async def attach_session(request: Request, call_next):
+    raw = request.cookies.get(SESSION_COOKIE, "")
+    session_id = raw if _SESSION_RE.fullmatch(raw) else uuid.uuid4().hex
+    request.state.session_id = session_id
+    response = await call_next(request)
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_id,
+        max_age=7 * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+def _caller(request: Request) -> str:
+    # Render appends the connecting address. The last hop is the one the proxy saw.
+    forwarded = request.headers.get("x-forwarded-for", "")
+    parts = [part.strip() for part in forwarded.split(",") if part.strip()]
+    if parts:
+        return parts[-1][:80]
+    if request.client is None:
+        return "unknown"
+    return request.client.host
+
+
+def _proposal_allowed(request: Request) -> bool:
+    caller = _caller(request)
+    now = time.monotonic()
+    recent = [stamp for stamp in _proposal_hits.get(caller, []) if now - stamp < _PROPOSAL_WINDOW_SECONDS]
+    if len(recent) >= _PROPOSAL_LIMIT:
+        _proposal_hits[caller] = recent
+        return False
+    recent.append(now)
+    _proposal_hits[caller] = recent
+    return True
 
 
 def data_directory() -> Path:
@@ -156,13 +208,13 @@ def config() -> dict:
 
 
 @app.post("/api/orders")
-def create_order(body: OrderRequest) -> dict:
+def create_order(body: OrderRequest, request: Request) -> dict:
     """Create a PayPal order for a basket that still passes the policy.
 
     The amount is the catalog total stored at check time. A price in the
     request body is not read.
     """
-    saved = _payable_checkout(body.checkout_id)
+    saved = _payable_checkout(body.checkout_id, request.state.session_id)
     client = _client_or_503()
     order = saved["order"]
     try:
@@ -170,6 +222,7 @@ def create_order(body: OrderRequest) -> dict:
             currency="GBP",
             value=str(order["total_gbp"]),
             description=_basket_description(order),
+            # The sandbox order carries the checkout id: the check that allowed it.
             custom_id=saved["id"],
         )
     except PayPalError as exc:
@@ -184,28 +237,31 @@ def create_order(body: OrderRequest) -> dict:
 
 
 @app.post("/api/orders/{order_id}/capture")
-def capture_order(order_id: str) -> dict:
+def capture_order(order_id: str, request: Request) -> dict:
     """Capture an order after the buyer approves it, then record the spend."""
     if not ORDER_ID_RE.fullmatch(order_id):
         raise HTTPException(
             status_code=400,
             detail="Order id must be 1-36 uppercase letters or digits.",
         )
+    saved = _guard_checkout(checkout_store().find_by_paypal(order_id), request.state.session_id)
     client = _client_or_503()
     try:
         summary = client.capture_order(order_id)
     except PayPalError as exc:
         raise HTTPException(status_code=502, detail=exc.detail()) from exc
-    summary["ledger_recorded"] = _record_capture(order_id, summary)
+    summary["ledger_recorded"] = _record_capture(order_id, summary, request.state.session_id)
     return summary
 
 
 @app.post("/api/proposals")
-def create_proposal(body: ProposalRequest) -> dict:
+def create_proposal(body: ProposalRequest, request: Request) -> dict:
     """Ask the agent for a basket. This never calls PayPal."""
     task = body.task.strip()
     if not task:
         raise HTTPException(status_code=400, detail="Tell the agent what to buy.")
+    if not _proposal_allowed(request):
+        raise HTTPException(status_code=429, detail="Too many proposals. Wait a minute and try again.")
     try:
         client = chat_client_from_env()
     except MissingLLMCredentials as exc:
@@ -231,7 +287,7 @@ def create_proposal(body: ProposalRequest) -> dict:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
         client.close()
-    return _with_verification(task, proposal)
+    return _with_verification(task, proposal, request.state.session_id)
 
 
 @app.get("/")
@@ -246,18 +302,28 @@ def _client_or_503() -> PayPalClient:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
-def _with_verification(task: str, proposal: dict) -> dict:
+def _with_verification(task: str, proposal: dict, session_id: str) -> dict:
     order = {
         "items": proposal["items"],
         "total_gbp": proposal["total_gbp"],
         "reasoning": proposal["reasoning"],
     }
     graph = proposal.get("graph") or {"nodes": [], "edges": [], "highlights": []}
-    verification = verify(load_policy(), order, graph, history=ledger_store().entries())
+    verification = verify(
+        load_policy(),
+        order,
+        graph,
+        history=ledger_store().entries(session_id=session_id),
+    )
     proposal["verification"] = verification
     proposal["paypal_order_created"] = False
     if verification["passed"]:
-        proposal["checkout_id"] = checkout_store().save(task=task, order=order, graph=graph)
+        proposal["checkout_id"] = checkout_store().save(
+            task=task,
+            order=order,
+            graph=graph,
+            session_id=session_id,
+        )
         proposal["note"] = "Every rule passed. PayPal can take this basket. No order has been created yet."
     else:
         proposal["checkout_id"] = None
@@ -265,17 +331,13 @@ def _with_verification(task: str, proposal: dict) -> dict:
     return proposal
 
 
-def _payable_checkout(checkout_id: str) -> dict:
-    saved = checkout_store().get(checkout_id)
-    if saved is None:
-        raise HTTPException(status_code=404, detail="That basket is not waiting for payment.")
-    if saved["recorded"]:
-        raise HTTPException(status_code=409, detail="This basket was already captured.")
+def _payable_checkout(checkout_id: str, session_id: str) -> dict:
+    saved = _guard_checkout(checkout_store().get(checkout_id), session_id)
     verification = verify(
         load_policy(),
         saved["order"],
         saved["graph"],
-        history=ledger_store().entries(),
+        history=ledger_store().entries(session_id=session_id),
     )
     if not verification["passed"]:
         raise HTTPException(
@@ -299,7 +361,21 @@ def _basket_description(order: dict) -> str:
     return text[:124] + "..."
 
 
-def _record_capture(order_id: str, summary: dict) -> bool:
+def _guard_checkout(saved: dict | None, session_id: str) -> dict:
+    """A capture or payment must be one we stored, for this browser, and still fresh."""
+    if saved is None or (saved.get("session_id") or "") != session_id:
+        raise HTTPException(status_code=404, detail="That basket is not waiting for payment.")
+    if saved["recorded"]:
+        raise HTTPException(status_code=409, detail="This basket was already captured.")
+    created = datetime.fromisoformat(saved["created_at"])
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) - created > CHECKOUT_TTL:
+        raise HTTPException(status_code=409, detail="This check expired. Propose the basket again.")
+    return saved
+
+
+def _record_capture(order_id: str, summary: dict, session_id: str) -> bool:
     if summary.get("capture_status") not in _RECORDABLE:
         return False
     saved = checkout_store().find_by_paypal(order_id)
@@ -314,6 +390,7 @@ def _record_capture(order_id: str, summary: dict) -> bool:
             amount_gbp=str(item.get("line_total_gbp") or "0.00"),
             purchased_at=purchased_at,
             paypal_order_id=order_id,
+            session_id=session_id,
         )
     checkout_store().mark_recorded(saved["id"])
     return True

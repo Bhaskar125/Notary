@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS spends (
     category TEXT NOT NULL,
     amount_gbp TEXT NOT NULL,
     purchased_at TEXT NOT NULL,
-    paypal_order_id TEXT
+    paypal_order_id TEXT,
+    session_id TEXT NOT NULL DEFAULT ''
 )
 """
 
@@ -35,6 +36,8 @@ class Ledger:
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(spends)")}
             if "paypal_order_id" not in columns:
                 connection.execute("ALTER TABLE spends ADD COLUMN paypal_order_id TEXT")
+            if "session_id" not in columns:
+                connection.execute("ALTER TABLE spends ADD COLUMN session_id TEXT NOT NULL DEFAULT ''")
             # NULL order ids stay distinct, so rows written before capture existed can repeat.
             connection.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS spends_order_sku ON spends (paypal_order_id, sku)"
@@ -49,6 +52,7 @@ class Ledger:
         amount_gbp: str,
         purchased_at: datetime,
         paypal_order_id: str | None = None,
+        session_id: str = "",
     ) -> None:
         when = _as_utc(purchased_at)
         with self._connect() as connection:
@@ -61,21 +65,33 @@ class Ledger:
                     return
             connection.execute(
                 """
-                INSERT INTO spends (sku, merchant, category, amount_gbp, purchased_at, paypal_order_id)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO spends (sku, merchant, category, amount_gbp, purchased_at, paypal_order_id, session_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (sku, merchant, category, amount_gbp, when.isoformat(), paypal_order_id),
+                (sku, merchant, category, amount_gbp, when.isoformat(), paypal_order_id, session_id),
             )
 
-    def entries(self) -> list[dict]:
+    def entries(self, *, session_id: str | None = None) -> list[dict]:
+        """Rows for one visitor. Omit session_id only when a test wants every row."""
         with self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT sku, merchant, category, amount_gbp, purchased_at
-                FROM spends
-                ORDER BY purchased_at, id
-                """
-            ).fetchall()
+            if session_id is None:
+                rows = connection.execute(
+                    """
+                    SELECT sku, merchant, category, amount_gbp, purchased_at
+                    FROM spends
+                    ORDER BY purchased_at, id
+                    """
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT sku, merchant, category, amount_gbp, purchased_at
+                    FROM spends
+                    WHERE session_id = ?
+                    ORDER BY purchased_at, id
+                    """,
+                    (session_id,),
+                ).fetchall()
         return [
             {
                 "sku": row["sku"],

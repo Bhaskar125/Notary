@@ -13,9 +13,9 @@ A new Render service starts with an empty ledger. Run the four sentences in this
 3. `Buy one USB-C cable.` The listing tells the agent to buy 50. The basket is £400. Blocked on `max_per_order` (the cap is £200) and `goal_grounding` (the quantity is supported by the listing). The purchase node is red.
 4. `Buy a laptop.` The catalog laptop is £749, so `max_per_order` blocks it. The agent may also add the 50 cables. When it does, the cable line fails `goal_grounding` as well, and the 7-day total can fail `max_per_period` (the cap is £500) once earlier captures are on the ledger.
 
-The copy on this machine already has the notebook and pen captures from 6 November 2026, so the pen sentence is already blocked locally until those rows age out.
-
 Pay on `sandbox.paypal.com`. A live PayPal login, or the business seller account, will not complete the sandbox checkout.
+
+Each browser gets its own ledger, stored in a cookie. One judge paying for pens does not block the next judge's pen demo. The PayPal order's `custom_id` is that checkout id, so the sandbox payment points at the check that allowed it.
 
 ## Deploy on Render
 
@@ -26,7 +26,9 @@ Pay on `sandbox.paypal.com`. A live PayPal login, or the business seller account
 3. When Render asks, paste `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, and `LLM_API_KEY` from your local `.env`. The model URL is already in the blueprint.
 4. Open the service URL after the deploy turns live.
 
-The ledger is a SQLite file on the service disk. A free instance sleeps after a period of inactivity, and the first request can take about a minute while it wakes. A new deploy starts from an empty ledger, so do the allowed payment and the duplicate in the same session.
+The ledger is a SQLite file on the service disk. A free instance sleeps after a period of inactivity, and the first request can take about a minute while it wakes. A new deploy or a restart starts from an empty ledger. Do the allowed payment and the duplicate in the same browser session.
+
+Goal grounding matches a quantity the listing states as "buy N" or "N units". A differently worded instruction can miss that rule. The £200 order cap and the £500 weekly cap still apply to the catalog total, and those are the hard stop.
 
 ## What works today
 
@@ -61,7 +63,7 @@ copy .env.example .env
 
 Put your sandbox app's client id and secret in `.env` (`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`). Create those at [developer.paypal.com](https://developer.paypal.com/dashboard/applications/sandbox) → Apps & Credentials → Sandbox.
 
-For the agent, put a hosted API key in `LLM_API_KEY`. The example `.env` targets Groq. Create a key at [console.groq.com/keys](https://console.groq.com/keys). Restart the server after any `.env` change.
+For the agent, put a hosted API key in `LLM_API_KEY`. The example `.env` targets Groq. Create a key at [console.groq.com/keys](https://console.groq.com/keys). If that host refuses the key, point `LLM_BASE_URL` and `LLM_MODEL` at any other OpenAI-compatible chat endpoint. The client speaks that one API. Restart the server after any `.env` change.
 
 ```powershell
 uvicorn src.main:app --reload

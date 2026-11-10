@@ -42,10 +42,12 @@ def save_notebook(*, quantity: int = 1) -> tuple[str, dict]:
             ],
         }
     ]
+    client.get("/api/health")
     checkout_id = main.checkout_store().save(
         task=task,
         order=order,
         graph=build_graph(task, trace, lines),
+        session_id=client.cookies["notary_session"],
     )
     return checkout_id, order
 
@@ -145,6 +147,7 @@ class OrdersApiTests(unittest.TestCase):
             category="electronics",
             amount_gbp="490.00",
             purchased_at=datetime.now(timezone.utc),
+            session_id=client.cookies["notary_session"],
         )
         called = False
 
@@ -172,30 +175,29 @@ class OrdersApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(called)
 
-    def test_capture_returns_the_client_summary(self):
-        class FakePayPal:
-            def capture_order(self, order_id):
-                return {
-                    "id": order_id,
-                    "status": "COMPLETED",
-                    "capture_id": "CAP1",
-                    "capture_status": "COMPLETED",
-                    "amount": {"currency_code": "GBP", "value": "12.50"},
-                }
+    def test_capture_of_an_unknown_order_does_not_call_paypal(self):
+        called = False
 
-        with patch.object(main, "paypal_client_from_env", return_value=FakePayPal()):
+        def explode():
+            nonlocal called
+            called = True
+            raise AssertionError("PayPal should not be called")
+
+        with patch.object(main, "paypal_client_from_env", side_effect=explode):
             response = client.post("/api/orders/ORDER1/capture")
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(body["capture_id"], "CAP1")
-        self.assertFalse(body["ledger_recorded"])
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(called)
 
     def test_capture_writes_each_line_once(self):
         checkout_id, order = save_notebook()
         main.checkout_store().attach_paypal(checkout_id, "ORDER1")
 
         class FakePayPal:
+            def __init__(self):
+                self.calls = 0
+
             def capture_order(self, order_id):
+                self.calls += 1
                 return {
                     "id": order_id,
                     "status": "COMPLETED",
@@ -204,11 +206,15 @@ class OrdersApiTests(unittest.TestCase):
                     "amount": {"currency_code": "GBP", "value": order["total_gbp"]},
                 }
 
-        with patch.object(main, "paypal_client_from_env", return_value=FakePayPal()):
+        fake = FakePayPal()
+        with patch.object(main, "paypal_client_from_env", return_value=fake):
             first = client.post("/api/orders/ORDER1/capture")
             second = client.post("/api/orders/ORDER1/capture")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["capture_id"], "CAP1")
         self.assertTrue(first.json()["ledger_recorded"])
-        self.assertFalse(second.json()["ledger_recorded"])
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(fake.calls, 1)
         rows = main.ledger_store().entries()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["sku"], "NOTEBOOK-PACK")
@@ -223,6 +229,7 @@ class OrdersApiTests(unittest.TestCase):
             category="stationery",
             amount_gbp="12.50",
             purchased_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            session_id=client.cookies["notary_session"],
         )
 
         def explode():
@@ -232,6 +239,87 @@ class OrdersApiTests(unittest.TestCase):
             response = client.post("/api/orders", json={"checkout_id": checkout_id})
         self.assertEqual(response.status_code, 409)
         self.assertIn("no_duplicates", response.text)
+
+    def test_another_browser_does_not_inherit_the_spend_or_the_checkout(self):
+        checkout_id, _order = save_notebook()
+        main.ledger_store().record(
+            sku="NOTEBOOK-PACK",
+            merchant="Desk & Co",
+            category="stationery",
+            amount_gbp="12.50",
+            purchased_at=datetime.now(timezone.utc),
+            session_id=client.cookies["notary_session"],
+        )
+        other = TestClient(main.app)
+        other.get("/api/health")
+        blocked = client.post("/api/orders", json={"checkout_id": checkout_id})
+        stolen = other.post("/api/orders", json={"checkout_id": checkout_id})
+        self.assertEqual(blocked.status_code, 409)
+        self.assertEqual(stolen.status_code, 404)
+
+        lines, errors = price_lines(CATALOG, [{"sku": "PEN-BOX", "quantity": 1}])
+        self.assertEqual(errors, [])
+        pen = {
+            "items": lines,
+            "total_gbp": order_total(lines),
+            "reasoning": "1 * 4.50 = 4.50\ntotal = 4.50",
+        }
+        pen_id = main.checkout_store().save(
+            task="Buy one box of ballpoint pens.",
+            order=pen,
+            graph=build_graph("Buy one box of ballpoint pens.", [], lines),
+            session_id=other.cookies["notary_session"],
+        )
+
+        class FakePayPal:
+            def create_order(self, **kwargs):
+                return {"id": "ORDER9", "status": "CREATED"}
+
+        with patch.object(main, "paypal_client_from_env", return_value=FakePayPal()):
+            fresh = other.post("/api/orders", json={"checkout_id": pen_id})
+        self.assertEqual(fresh.status_code, 200)
+        self.assertEqual(fresh.json()["id"], "ORDER9")
+
+    def test_an_expired_checkout_is_not_sent_to_paypal(self):
+        import sqlite3
+
+        checkout_id, _order = save_notebook()
+        expired = (datetime.now(timezone.utc) - timedelta(minutes=31)).isoformat()
+        connection = sqlite3.connect(main.ledger_store().path)
+        try:
+            connection.execute(
+                "UPDATE checkouts SET created_at = ? WHERE id = ?",
+                (expired, checkout_id),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        def explode():
+            raise AssertionError("PayPal should not be called")
+
+        with patch.object(main, "paypal_client_from_env", side_effect=explode):
+            response = client.post("/api/orders", json={"checkout_id": checkout_id})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("expired", response.text)
+
+    def test_eleven_proposals_from_one_caller_are_limited(self):
+        def quiet(task, catalog, chat):
+            return {
+                "items": [],
+                "total_gbp": "0.00",
+                "reasoning": "total = 0.00",
+                "rounds": 1,
+                "graph": {"nodes": [], "edges": [], "highlights": []},
+            }
+
+        with patch.object(main, "run_agent", side_effect=quiet):
+            statuses = [
+                client.post("/api/proposals", json={"task": "Buy pens"}).status_code
+                for _ in range(11)
+            ]
+        self.assertEqual(statuses[:10], [200] * 10)
+        self.assertEqual(statuses[10], 429)
 
 
 if __name__ == "__main__":

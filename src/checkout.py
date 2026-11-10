@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS checkouts (
     graph_json TEXT NOT NULL,
     paypal_order_id TEXT,
     recorded INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    session_id TEXT NOT NULL DEFAULT ''
 )
 """
 
@@ -35,14 +36,26 @@ class CheckoutStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
             connection.execute(_SCHEMA)
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(checkouts)")}
+            if "session_id" not in columns:
+                connection.execute("ALTER TABLE checkouts ADD COLUMN session_id TEXT NOT NULL DEFAULT ''")
 
-    def save(self, *, task: str, order: dict[str, Any], graph: dict[str, Any]) -> str:
+    def save(
+        self,
+        *,
+        task: str,
+        order: dict[str, Any],
+        graph: dict[str, Any],
+        session_id: str,
+    ) -> str:
         checkout_id = uuid.uuid4().hex
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO checkouts (id, task, order_json, graph_json, paypal_order_id, recorded, created_at)
-                VALUES (?, ?, ?, ?, NULL, 0, ?)
+                INSERT INTO checkouts (
+                    id, task, order_json, graph_json, paypal_order_id, recorded, created_at, session_id
+                )
+                VALUES (?, ?, ?, ?, NULL, 0, ?, ?)
                 """,
                 (
                     checkout_id,
@@ -50,6 +63,7 @@ class CheckoutStore:
                     json.dumps(order),
                     json.dumps(graph),
                     datetime.now(timezone.utc).isoformat(),
+                    session_id,
                 ),
             )
         return checkout_id
@@ -98,4 +112,5 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "paypal_order_id": row["paypal_order_id"],
         "recorded": bool(row["recorded"]),
         "created_at": row["created_at"],
+        "session_id": row["session_id"] or "",
     }
