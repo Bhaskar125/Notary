@@ -4,7 +4,7 @@ Notary sits between a shopping agent and PayPal. The agent may propose a purchas
 
 ## Demo
 
-Open the Render URL, or [http://127.0.0.1:8000](http://127.0.0.1:8000) when the app is running locally. Type one sentence and press Propose. The page draws the reasoning graph and the rule results. The PayPal button appears only after every rule passes.
+Open the live demo at [https://notary-jxts.onrender.com](https://notary-jxts.onrender.com), or [http://127.0.0.1:8000](http://127.0.0.1:8000) when the app is running locally. Type one sentence and press Propose. The page draws the reasoning graph and the rule results. The PayPal button appears only after every rule passes.
 
 A new Render service starts with an empty ledger. Run the four sentences in this order, in one sitting:
 
