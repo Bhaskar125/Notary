@@ -529,6 +529,24 @@ textarea:focus {
   color: var(--red);
 }
 
+#receipt-download {
+  margin-top: 0.85rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#receipt-download:hover {
+  background: var(--ink);
+  color: #f6f0e6;
+}
+
 .pay-row {
   display: flex;
   align-items: center;

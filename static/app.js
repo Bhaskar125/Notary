@@ -450,6 +450,46 @@ function paintReceipt() {
   card.hidden = false;
 }
 
+function receiptDocument(state) {
+  const lines = [
+    "Notary proof receipt",
+    `Policy ${state.policy}`,
+    `Checked ${state.checkedAt}`,
+    "",
+    "Basket",
+  ];
+  for (const item of state.items) {
+    lines.push(`${item.quantity} x ${item.name} (${item.sku})  £${item.line_total_gbp}`);
+  }
+  lines.push(`Basket total  £${state.total}`);
+  lines.push("");
+  lines.push("Rules");
+  for (const rule of state.rules) {
+    lines.push(`${rule.passed ? "Pass" : "Fail"}  ${rule.label}`);
+  }
+  lines.push("");
+  lines.push(`Checkout ${state.checkoutId || "not issued"}`);
+  lines.push(`PayPal order ${state.paypalOrderId || "not paid"}`);
+  lines.push("");
+  lines.push("This file records the check. It is not a PayPal invoice.");
+  return lines.join("\n");
+}
+
+function downloadReceipt() {
+  if (!receiptState) return;
+  const text = receiptDocument(receiptState);
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const stamp = String(receiptState.checkoutId || "unpaid").replace(/[^A-Za-z0-9-]/g, "");
+  link.href = url;
+  link.download = `notary-receipt-${stamp || "unpaid"}.txt`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function renderVerification(verification) {
   const box = document.getElementById("verification");
   const heading = document.getElementById("verification-heading");
@@ -497,6 +537,8 @@ function counterexampleText(example) {
   }
   return parts.join("; ");
 }
+
+document.getElementById("receipt-download").addEventListener("click", downloadReceipt);
 
 document.querySelectorAll("[data-example]").forEach((button) => {
   button.addEventListener("click", () => {

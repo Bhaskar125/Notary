@@ -74,6 +74,8 @@ class OrdersApiTests(unittest.TestCase):
         self.assertIn("cytoscape@3.30.4", page.text)
         self.assertIn("web-sdk/v6/core", page.text)
         self.assertIn("Propose a basket", page.text)
+        self.assertIn('id="receipt-download"', page.text)
+        self.assertIn("Download receipt", page.text)
         self.assertNotIn("hardcoded", page.text.casefold())
         self.assertNotIn("PAYPAL_CLIENT_SECRET", page.text)
 
