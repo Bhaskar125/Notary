@@ -213,6 +213,9 @@ class ProposalRouteTests(unittest.TestCase):
         self.assertFalse(body["paypal_order_created"])
         self.assertTrue(body["verification"]["passed"], body["verification"])
         self.assertEqual(len(body["checkout_id"]), 32)
+        self.assertEqual(body["receipt"]["policy"], "default")
+        self.assertEqual(len(body["receipt"]["rules"]), 7)
+        self.assertTrue(all(rule["passed"] for rule in body["receipt"]["rules"]))
         self.assertNotIn("test-key", json.dumps(body))
 
     def test_an_over_cap_proposal_is_blocked_and_has_no_checkout(self):
@@ -243,6 +246,8 @@ class ProposalRouteTests(unittest.TestCase):
         self.assertEqual(body["total_gbp"], "749.00")
         self.assertFalse(body["verification"]["passed"])
         self.assertIn("max_per_order", {failure["rule_id"] for failure in body["verification"]["failures"]})
+        failed = {rule["rule_id"] for rule in body["receipt"]["rules"] if not rule["passed"]}
+        self.assertIn("max_per_order", failed)
         self.assertIsNone(body["checkout_id"])
         self.assertFalse(body["paypal_order_created"])
 

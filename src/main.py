@@ -320,8 +320,9 @@ def _with_verification(task: str, proposal: dict, session_id: str) -> dict:
         "reasoning": proposal["reasoning"],
     }
     graph = proposal.get("graph") or {"nodes": [], "edges": [], "highlights": []}
+    policy = load_policy()
     verification = verify(
-        load_policy(),
+        policy,
         order,
         graph,
         history=ledger_store().entries(session_id=session_id),
@@ -339,7 +340,40 @@ def _with_verification(task: str, proposal: dict, session_id: str) -> dict:
     else:
         proposal["checkout_id"] = None
         proposal["note"] = "A spending rule failed. PayPal will not be offered for this basket."
+    proposal["receipt"] = _receipt(policy, verification)
     return proposal
+
+
+def _receipt(policy, verification: dict) -> dict:
+    """A read-only stamp of the check. It does not decide whether PayPal is called."""
+    failed = {item["rule_id"] for item in verification["failures"]}
+    labels = (
+        ("max_per_order", f"No order over £{_gbp(policy.max_per_order_pence)}"),
+        (
+            "max_per_period",
+            f"No more than £{_gbp(policy.max_per_period_pence)} in {policy.period_days} days",
+        ),
+        ("allowed_merchants", "Merchant is on the allowed list"),
+        ("blocked_categories", "Category is not blocked"),
+        (
+            "no_duplicates",
+            f"No repeat from the same merchant within {policy.duplicate_window_hours} hours",
+        ),
+        ("arithmetic_consistency", "The stated total matches the basket"),
+        ("goal_grounding", "Every purchase is supported by the user's goal"),
+    )
+    return {
+        "policy": "default",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "rules": [
+            {"rule_id": rule_id, "label": label, "passed": rule_id not in failed}
+            for rule_id, label in labels
+        ],
+    }
+
+
+def _gbp(pence: int) -> str:
+    return f"{pence / 100:.2f}"
 
 
 def _payable_checkout(checkout_id: str, session_id: str) -> dict:

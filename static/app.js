@@ -154,6 +154,7 @@ async function onApprove(data) {
     `Captured ${amount}. Order ${body.id}, capture ${body.capture_id}, status ${status}.${recorded}`,
     body,
   );
+  if (body.id) setReceiptPaypal(body.id);
   clearPayPalButton();
   return body;
 }
@@ -378,6 +379,77 @@ function renderSuggestions(graph) {
   box.hidden = false;
 }
 
+let receiptState = null;
+
+function clearReceipt() {
+  receiptState = null;
+  const card = document.getElementById("receipt");
+  if (card) card.hidden = true;
+}
+
+function renderReceipt(proposal) {
+  const receipt = proposal.receipt;
+  if (!receipt) return;
+  receiptState = {
+    policy: receipt.policy,
+    checkedAt: receipt.checked_at,
+    checkoutId: proposal.checkout_id,
+    paypalOrderId: null,
+    total: proposal.total_gbp,
+    items: proposal.items || [],
+    rules: receipt.rules || [],
+  };
+  paintReceipt();
+}
+
+function setReceiptPaypal(orderId) {
+  if (!receiptState) return;
+  receiptState.paypalOrderId = orderId;
+  paintReceipt();
+}
+
+function paintReceipt() {
+  const card = document.getElementById("receipt");
+  const meta = document.getElementById("receipt-meta");
+  const basket = document.getElementById("receipt-basket");
+  const rules = document.getElementById("receipt-rules");
+  const ids = document.getElementById("receipt-ids");
+  if (!card || !receiptState) return;
+  meta.textContent = `Policy ${receiptState.policy} · checked ${receiptState.checkedAt}`;
+  basket.replaceChildren();
+  for (const item of receiptState.items) {
+    const row = document.createElement("li");
+    const name = document.createElement("span");
+    name.textContent = `${item.quantity} × ${item.name}`;
+    const amount = document.createElement("span");
+    amount.textContent = `£${item.line_total_gbp}`;
+    row.append(name, amount);
+    basket.append(row);
+  }
+  const total = document.createElement("li");
+  const totalName = document.createElement("span");
+  totalName.textContent = "Basket";
+  const totalAmount = document.createElement("span");
+  totalAmount.textContent = `£${receiptState.total}`;
+  total.append(totalName, totalAmount);
+  basket.append(total);
+  rules.replaceChildren();
+  for (const rule of receiptState.rules) {
+    const row = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = rule.label;
+    const mark = document.createElement("span");
+    mark.className = rule.passed ? "rule-mark pass" : "rule-mark fail";
+    mark.textContent = rule.passed ? "Pass" : "Fail";
+    row.append(label, mark);
+    rules.append(row);
+  }
+  const checkout = receiptState.checkoutId || "not issued";
+  const paypal = receiptState.paypalOrderId || "not paid";
+  ids.textContent = `Checkout ${checkout}. PayPal order ${paypal}.`;
+  card.hidden = false;
+}
+
 function renderVerification(verification) {
   const box = document.getElementById("verification");
   const heading = document.getElementById("verification-heading");
@@ -448,6 +520,7 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
   clearPayPalButton();
   clearGraph();
   document.getElementById("verification").hidden = true;
+  clearReceipt();
   showResult("");
   message.textContent = "Asking the agent. It may search the catalog a few times.";
   try {
@@ -492,6 +565,7 @@ document.getElementById("task-form").addEventListener("submit", async (event) =>
     setProposalVisible(true);
     renderGraph(body.graph, body.verification);
     renderVerification(body.verification);
+    renderReceipt(body);
     const rounds = `Proposed in ${body.rounds} model call${body.rounds === 1 ? "" : "s"}.`;
     if (body.verification.passed) {
       message.textContent = `${rounds} The check passed.`;

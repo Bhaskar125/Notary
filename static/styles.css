@@ -472,6 +472,60 @@ textarea:focus {
   font-size: 0.88rem;
 }
 
+#receipt {
+  margin-top: 1rem;
+  padding: 1rem 1.05rem 0.85rem;
+  border: 1px dashed #b7aa96;
+  border-radius: 0.9rem;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 27px,
+      rgba(27, 23, 20, 0.035) 28px
+    ),
+    #fffdf9;
+}
+
+#receipt-meta,
+#receipt-ids {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+#receipt-basket,
+#receipt-rules {
+  margin: 0.7rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+#receipt-basket li,
+#receipt-rules li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.28rem 0;
+  font-size: 0.92rem;
+}
+
+.rule-mark {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rule-mark.pass {
+  color: var(--green);
+}
+
+.rule-mark.fail {
+  color: var(--red);
+}
+
 .pay-row {
   display: flex;
   align-items: center;

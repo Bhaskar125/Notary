@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Outfit:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/static/styles.css?v=6" />
+    <link rel="stylesheet" href="/static/styles.css?v=7" />
   </head>
   <body>
     <header class="top">
@@ -92,6 +92,14 @@
             <ul id="verification-list"></ul>
           </div>
 
+          <section id="receipt" hidden aria-label="Proof receipt">
+            <p class="merchant">Receipt</p>
+            <p id="receipt-meta"></p>
+            <ul id="receipt-basket"></ul>
+            <ul id="receipt-rules"></ul>
+            <p id="receipt-ids"></p>
+          </section>
+
           <div class="pay-row">
             <div id="paypal-button-container"></div>
             <p id="result-message" role="status"></p>
@@ -106,7 +114,7 @@
       </section>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
-    <script src="/static/app.js?v=6"></script>
+    <script src="/static/app.js?v=7"></script>
     <script
       async
       src="https://www.sandbox.paypal.com/web-sdk/v6/core"
