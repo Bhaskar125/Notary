@@ -148,6 +148,7 @@ class ChatClient:
         if self._owns_http:
             self._http.close()
 
+    # This calls the model. A broken tool call is tried once more, then the error is returned.
     def complete(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> dict[str, Any]:
         try:
             return self._complete_once(messages, tools)
@@ -197,6 +198,7 @@ class ChatClient:
         return message
 
 
+# This is the loop. The model may search and read listings, then it has to call propose_order.
 def run_agent(task: str, catalog: Catalog, client: Completer) -> dict[str, Any]:
     seen: set[str] = set()
     trace: list[dict[str, Any]] = []
@@ -256,6 +258,7 @@ def run_agent(task: str, catalog: Catalog, client: Completer) -> dict[str, Any]:
     raise AgentError("The model did not submit a basket within 6 rounds. Try the task again.")
 
 
+# This accepts tool arguments as a dict or as a JSON string. Anything else is rejected.
 def parse_arguments(raw: object) -> dict[str, Any]:
     if isinstance(raw, dict):
         return raw
@@ -274,6 +277,7 @@ def parse_arguments(raw: object) -> dict[str, Any]:
     return parsed
 
 
+# This fills the merchant and category names into the system prompt for this catalog.
 def _system_prompt(catalog: Catalog) -> str:
     return SYSTEM_PROMPT.format(
         merchants=", ".join(sorted(catalog.merchants)),
@@ -300,6 +304,7 @@ def _tool_message(call_id: str, payload: dict[str, Any]) -> dict[str, str]:
     return {"role": "tool", "tool_call_id": call_id, "content": json.dumps(payload)}
 
 
+# This runs a catalog search and remembers the SKUs the model has actually seen.
 def _search(catalog: Catalog, args: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     max_price = args.get("max_price")
     limit_price: Decimal | None = None
@@ -321,6 +326,7 @@ def _search(catalog: Catalog, args: dict[str, Any]) -> tuple[dict[str, Any], lis
     }, [product.sku for product in products]
 
 
+# This returns one listing, description included, so the model can be talked into a quantity.
 def _get_product(catalog: Catalog, args: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
     sku = str(args.get("sku") or "").strip()
     if not sku:
@@ -331,6 +337,7 @@ def _get_product(catalog: Catalog, args: dict[str, Any]) -> tuple[dict[str, Any]
     return product.public(), product.sku
 
 
+# This prices the proposed SKUs from the catalog. A SKU the model never saw is refused.
 def _propose(
     catalog: Catalog,
     args: dict[str, Any],
@@ -366,6 +373,7 @@ def _propose(
     return {"ok": True, "total_gbp": proposal["total_gbp"]}, proposal
 
 
+# This keeps the listings the agent opened, which is what the graph is built from.
 def _remember(trace: list[dict[str, Any]], tool: str, args: dict[str, Any], products: object) -> None:
     if not isinstance(products, list):
         return
@@ -408,6 +416,7 @@ def _error_code(body: object) -> str | None:
     return None
 
 
+# This hides the API key if it ever appears in an error body.
 def _public_body(body: object, secret: str) -> str:
     text = json.dumps(body, default=str) if isinstance(body, (dict, list)) else str(body)
     if secret:

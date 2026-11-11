@@ -37,9 +37,10 @@ class CheckoutStore:
         with self._connect() as connection:
             connection.execute(_SCHEMA)
             columns = {row["name"] for row in connection.execute("PRAGMA table_info(checkouts)")}
-            if "session_id" not in columns:
-                connection.execute("ALTER TABLE checkouts ADD COLUMN session_id TEXT NOT NULL DEFAULT ''")
+        if "session_id" not in columns:
+            connection.execute("ALTER TABLE checkouts ADD COLUMN session_id TEXT NOT NULL DEFAULT ''")
 
+    # This stores a basket that passed. The id is what the browser is allowed to send back.
     def save(
         self,
         *,
@@ -68,11 +69,13 @@ class CheckoutStore:
             )
         return checkout_id
 
+    # This loads one checkout, including the prices the browser is not allowed to change.
     def get(self, checkout_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM checkouts WHERE id = ?", (checkout_id,)).fetchone()
         return None if row is None else _row_to_dict(row)
 
+    # This remembers the PayPal order id on the checkout that created it.
     def attach_paypal(self, checkout_id: str, paypal_order_id: str) -> None:
         with self._connect() as connection:
             connection.execute(
@@ -80,6 +83,7 @@ class CheckoutStore:
                 (paypal_order_id, checkout_id),
             )
 
+    # This finds the checkout from the PayPal order id, which is what capture sends us.
     def find_by_paypal(self, paypal_order_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:
             row = connection.execute(
@@ -88,6 +92,7 @@ class CheckoutStore:
             ).fetchone()
         return None if row is None else _row_to_dict(row)
 
+    # This marks the checkout as written to the ledger so a second capture does nothing.
     def mark_recorded(self, checkout_id: str) -> None:
         with self._connect() as connection:
             connection.execute("UPDATE checkouts SET recorded = 1 WHERE id = ?", (checkout_id,))
@@ -103,6 +108,7 @@ class CheckoutStore:
             connection.close()
 
 
+# This unpacks a row. The order and the graph were stored as JSON.
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],

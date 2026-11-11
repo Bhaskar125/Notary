@@ -10,11 +10,13 @@ let pageConfig = null;
 let paypalSdk = null;
 let graphView = null;
 
+// This is the £ amount shown next to the PayPal button.
 function formatMoney(currency, value) {
   if (currency === "GBP") return `£${value}`;
   return `${currency} ${value}`;
 }
 
+// This reads an error from the server and shows the message, not the raw JSON.
 function errorText(body) {
   if (!body) return "Request failed.";
   if (typeof body.detail === "string") return body.detail;
@@ -22,6 +24,7 @@ function errorText(body) {
   return "Request failed.";
 }
 
+// This writes the capture result under the button, and the raw PayPal summary when we have one.
 function showResult(message, payload) {
   document.getElementById("result-message").textContent = message;
   const block = document.getElementById("result-json");
@@ -34,16 +37,19 @@ function showResult(message, payload) {
   }
 }
 
+// This removes the PayPal button so a new proposal cannot pay the previous basket.
 function clearPayPalButton() {
   document.getElementById("paypal-button-container").replaceChildren();
 }
 
+// This swaps the empty state for the proposal once a basket comes back.
 function setProposalVisible(visible) {
   document.getElementById("proposal").hidden = !visible;
   const empty = document.getElementById("result-empty");
   if (empty) empty.hidden = visible;
 }
 
+// This asks the server whether PayPal and the model are configured. Secrets never come back.
 async function onLoad() {
   try {
     const response = await fetch("/api/config");
@@ -81,6 +87,7 @@ async function onLoad() {
   }
 }
 
+// This mounts the sandbox button only after a pass. The session sends the checkout id, not a price.
 async function mountPayPalButton(checkoutId, total) {
   clearPayPalButton();
   if (!paypalSdk) {
@@ -122,6 +129,7 @@ async function mountPayPalButton(checkoutId, total) {
   showResult(`Use a sandbox personal account to approve the £${total} payment.`);
 }
 
+// This asks our server to create the PayPal order and hands the order id to the button.
 async function createOrder(checkoutId) {
   const response = await fetch("/api/orders", {
     method: "POST",
@@ -137,6 +145,7 @@ async function createOrder(checkoutId) {
   return { orderId: body.id };
 }
 
+// This captures the order after the buyer approves it, then puts the PayPal order id on the receipt.
 async function onApprove(data) {
   const response = await fetch(`/api/orders/${encodeURIComponent(data.orderId)}/capture`, {
     method: "POST",
@@ -204,6 +213,7 @@ function nodeLabel(node) {
   return clip(node.text || id, 48);
 }
 
+// This draws the goal, the listings, and the purchases. Suggestion arrows stay dashed and are not reversed.
 function renderGraph(graph, verification) {
   clearGraph();
   const container = document.getElementById("graph");
@@ -362,6 +372,7 @@ function renderGraph(graph, verification) {
   renderSuggestions(graph);
 }
 
+// This lists the cheaper-basket notes. They do not change what PayPal would charge.
 function renderSuggestions(graph) {
   const box = document.getElementById("suggestions");
   const list = document.getElementById("suggestion-list");
@@ -387,6 +398,7 @@ function clearReceipt() {
   if (card) card.hidden = true;
 }
 
+// This fills the receipt card from the check the server already made.
 function renderReceipt(proposal) {
   const receipt = proposal.receipt;
   if (!receipt) return;
@@ -450,6 +462,7 @@ function paintReceipt() {
   card.hidden = false;
 }
 
+// This is the text file behind Download receipt. It copies the card, it does not re-check the basket.
 function receiptDocument(state) {
   const lines = [
     "Notary proof receipt",
@@ -475,6 +488,7 @@ function receiptDocument(state) {
   return lines.join("\n");
 }
 
+// This saves that text file in the browser. The name uses the checkout id.
 function downloadReceipt() {
   if (!receiptState) return;
   const text = receiptDocument(receiptState);
@@ -490,6 +504,7 @@ function downloadReceipt() {
   URL.revokeObjectURL(url);
 }
 
+// This shows Allowed or Blocked, and the explanation for each failed rule.
 function renderVerification(verification) {
   const box = document.getElementById("verification");
   const heading = document.getElementById("verification-heading");
@@ -542,6 +557,7 @@ document.getElementById("receipt-download").addEventListener("click", downloadRe
 
 let catalogLoaded = false;
 
+// This adds a product name to the task. Clicking the same name again does not add it twice.
 function addProductToTask(name) {
   const field = document.getElementById("task");
   const current = field.value.trim();
@@ -554,6 +570,7 @@ function addProductToTask(name) {
   field.focus();
 }
 
+// This opens the catalog. The first open loads names and prices. Listing text stays on the server.
 async function toggleCatalog() {
   const panel = document.getElementById("catalog-panel");
   const opening = panel.hidden;
@@ -612,6 +629,7 @@ document.querySelectorAll("[data-example]").forEach((button) => {
   });
 });
 
+// This sends the task, then paints the basket, the graph, the verdict, and the receipt.
 document.getElementById("task-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const task = document.getElementById("task").value.trim();

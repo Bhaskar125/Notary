@@ -60,10 +60,12 @@ _checkouts: CheckoutStore | None = None
 _data_dir: Path | None = None
 
 
+# This is the sentence the browser sends. Two thousand characters is as long as a task can be.
 class ProposalRequest(BaseModel):
     task: str = Field(min_length=1, max_length=2000)
 
 
+# This is the only field the browser may send when it wants to pay. The price stays on the server.
 class OrderRequest(BaseModel):
     checkout_id: str = Field(pattern=r"^[a-f0-9]{32}$")
 
@@ -72,6 +74,7 @@ class MissingPayPalCredentials(Exception):
     pass
 
 
+# This builds the PayPal client from .env and keeps it until the keys change.
 def paypal_client_from_env() -> PayPalClient:
     global _paypal
     client_id = os.environ.get("PAYPAL_CLIENT_ID", "").strip()
@@ -86,6 +89,7 @@ def paypal_client_from_env() -> PayPalClient:
     return _paypal
 
 
+# This loads the product file once and reuses it for every proposal.
 def default_catalog() -> Catalog:
     global _catalog
     if _catalog is None:
@@ -97,6 +101,7 @@ class MissingLLMCredentials(Exception):
     pass
 
 
+# This builds the model client. The key, the base URL, and the model name all have to be set.
 def chat_client_from_env() -> ChatClient:
     api_key = os.environ.get("LLM_API_KEY", "").strip()
     base_url = os.environ.get("LLM_BASE_URL", "").strip()
@@ -126,6 +131,7 @@ def set_data_directory(path: Path | None) -> None:
 
 
 @app.middleware("http")
+# This gives each browser its own id. A missing cookie gets a new one, then we set it on the way out.
 async def attach_session(request: Request, call_next):
     raw = request.cookies.get(SESSION_COOKIE, "")
     session_id = raw if _SESSION_RE.fullmatch(raw) else uuid.uuid4().hex
@@ -164,6 +170,7 @@ def _caller(request: Request) -> str:
     return request.client.host[:80]
 
 
+# This counts proposals for one visitor and refuses the eleventh inside a minute.
 def _proposal_allowed(request: Request) -> bool:
     caller = _caller(request)
     now = time.monotonic()
@@ -176,10 +183,12 @@ def _proposal_allowed(request: Request) -> bool:
     return True
 
 
+# This is the folder the sqlite file lives in. Tests point it at a temporary folder.
 def data_directory() -> Path:
     return _data_dir or (ROOT / "data")
 
 
+# This opens the spend ledger, creating the file the first time someone pays.
 def ledger_store() -> Ledger:
     global _ledger
     if _ledger is None:
@@ -187,6 +196,7 @@ def ledger_store() -> Ledger:
     return _ledger
 
 
+# This opens the checkout table in the same sqlite file as the ledger.
 def checkout_store() -> CheckoutStore:
     global _checkouts
     if _checkouts is None:
@@ -195,6 +205,7 @@ def checkout_store() -> CheckoutStore:
 
 
 @app.get("/api/health")
+# This is the Render health check. It does not call PayPal or the model.
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -319,10 +330,12 @@ def create_proposal(body: ProposalRequest, request: Request) -> dict:
 
 
 @app.get("/")
+# This serves the page. The browser then loads the CSS, the script, and the PayPal button.
 def index() -> FileResponse:
     return FileResponse(ROOT / "static" / "index.html")
 
 
+# This refuses to call PayPal when the sandbox keys are missing.
 def _client_or_503() -> PayPalClient:
     try:
         return paypal_client_from_env()
@@ -330,6 +343,7 @@ def _client_or_503() -> PayPalClient:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+# This runs the policy check, saves a checkout only when every rule passes, and stamps the receipt.
 def _with_verification(task: str, proposal: dict, session_id: str) -> dict:
     order = {
         "items": proposal["items"],
@@ -389,10 +403,12 @@ def _receipt(policy, verification: dict) -> dict:
     }
 
 
+# This turns a cap stored in pence into the pounds string printed on the receipt.
 def _gbp(pence: int) -> str:
     return f"{pence / 100:.2f}"
 
 
+# This loads the saved basket and checks it again, so a pass cannot go stale before PayPal is called.
 def _payable_checkout(checkout_id: str, session_id: str) -> dict:
     saved = _guard_checkout(checkout_store().get(checkout_id), session_id)
     verification = verify(
@@ -412,6 +428,7 @@ def _payable_checkout(checkout_id: str, session_id: str) -> dict:
     return saved
 
 
+# This is the short text PayPal shows on the order. PayPal only keeps the first 127 characters.
 def _basket_description(order: dict) -> str:
     parts = [
         f"{item.get('quantity')} x {item.get('name') or item.get('sku')}"
@@ -437,6 +454,7 @@ def _guard_checkout(saved: dict | None, session_id: str) -> dict:
     return saved
 
 
+# This writes each basket line to the ledger after a capture, and skips a line that was already written.
 def _record_capture(order_id: str, summary: dict, session_id: str) -> bool:
     if summary.get("capture_status") not in _RECORDABLE:
         return False

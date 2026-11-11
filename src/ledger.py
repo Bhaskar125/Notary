@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS spends (
 """
 
 
+# This is the spend history. Each browser only sees rows saved under its own session.
 class Ledger:
     def __init__(self, path: Path = DEFAULT_LEDGER_PATH):
         self.path = Path(path)
@@ -43,6 +44,7 @@ class Ledger:
                 "CREATE UNIQUE INDEX IF NOT EXISTS spends_order_sku ON spends (paypal_order_id, sku)"
             )
 
+    # This writes one captured line. The same PayPal order and SKU is not inserted twice.
     def record(
         self,
         *,
@@ -116,6 +118,7 @@ class Ledger:
             connection.close()
 
 
+# This keeps timestamps in UTC so the 24-hour and 7-day windows compare the same clock.
 def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)

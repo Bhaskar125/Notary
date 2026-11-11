@@ -11,6 +11,7 @@ import yaml
 DEFAULT_POLICY_PATH = Path(__file__).resolve().parent.parent / "policies" / "default.yaml"
 
 
+# This is the loaded policy. Caps are in pence so the checker can compare whole numbers.
 @dataclass(frozen=True)
 class Policy:
     max_per_order_pence: int
@@ -21,14 +22,17 @@ class Policy:
     duplicate_window_hours: int
 
     def merchant_allowed(self, merchant: str) -> bool:
+        # An empty list allows every merchant. Otherwise the name has to match, ignoring case.
         if not self.allowed_merchants:
             return True
         return merchant.casefold() in {name.casefold() for name in self.allowed_merchants}
 
     def category_blocked(self, category: str) -> bool:
+        # Alcohol is the blocked category in the demo policy. An empty list blocks nothing.
         return category.casefold() in {name.casefold() for name in self.blocked_categories}
 
 
+# This reads policies/default.yaml and refuses a missing or non-positive cap.
 def load_policy(path: Path = DEFAULT_POLICY_PATH) -> Policy:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
@@ -56,6 +60,7 @@ def load_policy(path: Path = DEFAULT_POLICY_PATH) -> Policy:
     )
 
 
+# This turns a pounds string such as "200.00" into 20000 pence.
 def _pence(value: object) -> int:
     amount = Decimal(str(value)).quantize(Decimal("0.01"))
     return int(amount * 100)

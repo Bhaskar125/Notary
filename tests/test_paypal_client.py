@@ -32,6 +32,7 @@ CAPTURED = {
 }
 
 
+# This checks create and capture against a fake PayPal, including the stable capture request id.
 class PayPalClientTests(unittest.TestCase):
     def test_create_then_capture_uses_bearer_token_and_stable_capture_id(self):
         seen = []

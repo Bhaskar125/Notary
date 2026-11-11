@@ -14,6 +14,7 @@
   </head>
   <body>
     <header class="top">
+      <!-- The name and the three caps a tester can see before they type anything. -->
       <div class="brand">
         <span class="seal" aria-hidden="true">N</span>
         <div>
@@ -30,6 +31,7 @@
 
     <main class="workspace">
       <section class="panel ask" aria-labelledby="agent-heading">
+        <!-- The task, the three demo sentences, and the catalog a tester can add from. -->
         <h2 id="agent-heading">Ask the agent</h2>
         <p class="lede">
           The agent proposes a basket from the catalog. Notary checks that basket
@@ -55,6 +57,7 @@
       </section>
 
       <section class="panel board" aria-label="Proposal">
+        <!-- After a proposal: the basket, the graph, the verdict, the receipt, and PayPal if it passed. -->
         <div id="result-empty" class="empty">
           <p class="merchant">Waiting for a basket</p>
           <p>Propose a task. The graph, the verdict, and PayPal will appear here.</p>
@@ -70,6 +73,7 @@
           <ul id="proposal-items"></ul>
 
           <div class="graph-panel">
+            <!-- Support arrows point at a purchase. A red node failed a rule. An amber node is only a saving. -->
             <div class="graph-head">
               <h3>Graph</h3>
               <ul class="legend" aria-label="Graph legend">
@@ -98,6 +102,7 @@
           </div>
 
           <section id="receipt" hidden aria-label="Proof receipt">
+            <!-- The read-only stamp of the check. Download writes this same card to a text file. -->
             <p class="merchant">Receipt</p>
             <p id="receipt-meta"></p>
             <ul id="receipt-basket"></ul>

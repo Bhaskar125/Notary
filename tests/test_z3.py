@@ -5,6 +5,7 @@ import unittest
 import z3
 
 
+# This checks that the pinned Z3 solver can actually run a constraint.
 class Z3Tests(unittest.TestCase):
     def test_solver_runs(self):
         amount = z3.Int("amount")

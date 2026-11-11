@@ -52,6 +52,7 @@ def save_notebook(*, quantity: int = 1) -> tuple[str, dict]:
     return checkout_id, order
 
 
+# This file drives the page with a fake PayPal client, so a test never moves money.
 class OrdersApiTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

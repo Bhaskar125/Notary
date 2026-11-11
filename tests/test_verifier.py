@@ -63,6 +63,7 @@ def _failure(result: dict, rule_id: str) -> dict:
     return matches[0]
 
 
+# This checks the numbers in policies/default.yaml.
 class PolicyFileTests(unittest.TestCase):
     def test_default_policy_has_the_demo_caps(self):
         self.assertEqual(POLICY.max_per_order_pence, 20000)
@@ -73,6 +74,7 @@ class PolicyFileTests(unittest.TestCase):
         self.assertEqual(len(POLICY.allowed_merchants), 5)
 
 
+# This gives every rule one basket that passes and one that fails.
 class VerifierTests(unittest.TestCase):
     def test_a_notebook_within_the_caps_passes_every_rule(self):
         item = _item("NOTEBOOK-PACK")
@@ -256,6 +258,7 @@ class VerifierTests(unittest.TestCase):
         self.assertIn("no_duplicates", _ids(result))
 
 
+# This writes a spend and reads it back from a temporary sqlite file.
 class LedgerTests(unittest.TestCase):
     def test_record_then_read_back(self):
         with tempfile.TemporaryDirectory() as folder:

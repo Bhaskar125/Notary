@@ -32,6 +32,7 @@ def tool_call(call_id: str, name: str, arguments: dict) -> dict:
     }
 
 
+# This stands in for the model and returns scripted tool calls.
 class Scripted:
     def __init__(self, replies: list[dict]):
         self._replies = list(replies)
@@ -47,6 +48,7 @@ class Scripted:
         pass
 
 
+# This checks that a proposal is priced from the catalog and that the receipt matches the verdict.
 class AgentLoopTests(unittest.TestCase):
     def test_proposal_is_priced_from_the_catalog(self):
         scripted = Scripted(
@@ -112,6 +114,7 @@ def seen_count(handler) -> int:
     return getattr(handler, "calls", 0)
 
 
+# This checks the HTTP client, including that a failed tool call is retried once.
 class ChatClientTests(unittest.TestCase):
     def test_complete_posts_tools_and_hides_the_key_from_errors(self):
         def handler(request: httpx.Request) -> httpx.Response:
@@ -167,6 +170,7 @@ class ChatClientTests(unittest.TestCase):
         self.assertEqual(calls["n"], 2)
 
 
+# This checks the proposal route, including the receipt on a pass and on a blocked laptop.
 class ProposalRouteTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

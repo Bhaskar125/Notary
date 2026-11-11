@@ -22,6 +22,7 @@ from typing import Any
 
 
 def build_graph(task: str, trace: list[dict[str, Any]], items: list[dict[str, Any]]) -> dict[str, Any]:
+    # The goal is the user's sentence. Claims are listings the agent opened. Purchases are the basket lines.
     listings = _listings_from_trace(trace)
     nodes: list[dict[str, Any]] = [{"id": "goal", "type": "goal", "text": task}]
     edges: list[dict[str, str]] = []
@@ -71,9 +72,12 @@ def build_graph(task: str, trace: list[dict[str, Any]], items: list[dict[str, An
                 {"source": f"claim:{sku}:quantity", "target": f"listing:{sku}", "relation": "supported_by"}
             )
         else:
+            # The user asked for this quantity, or the listing did not dictate one, so the goal supports the line.
             edges.append({"source": purchase_id, "target": "goal", "relation": "supported_by"})
 
+    # A listing nobody bought is dropped, so the graph only shows what the basket relies on.
     nodes = _without_unused_claims(nodes, edges)
+    # Suggestions are advisory. They do not count as support and they do not change the verdict.
     suggestions = _suggestions(task, items, listings)
     for suggestion in suggestions:
         nodes.append(
@@ -110,6 +114,7 @@ def listing_dictates_quantity(description: str, quantity: int) -> bool:
     return re.search(pattern, description, flags=re.IGNORECASE) is not None
 
 
+# This is true when the user's sentence already contains this quantity as a number.
 def quantity_in_text(text: str, quantity: int) -> bool:
     return re.search(rf"\b{quantity}\b", text) is not None
 
@@ -134,6 +139,7 @@ _ROLES: tuple[tuple[str, frozenset[str]], ...] = (
 )
 
 
+# This names a cheaper basket: drop an extra line, drop a duplicate role, or buy fewer units.
 def _suggestions(
     task: str,
     items: list[dict[str, Any]],
@@ -382,6 +388,7 @@ def _without_unused_claims(nodes: list[dict[str, Any]], edges: list[dict[str, st
     ]
 
 
+# This collects the products the agent actually searched or opened. The graph does not invent listings.
 def _listings_from_trace(trace: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     listings: dict[str, dict[str, Any]] = {}
     for event in trace:

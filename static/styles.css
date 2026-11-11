@@ -1,4 +1,5 @@
 :root {
+  /* Paper, ink, and the green and red used for a pass and a fail. */
   color-scheme: light;
   --paper: #e9e1d4;
   --ink: #1b1714;
@@ -93,6 +94,7 @@ h1 {
   font-size: 0.82rem;
 }
 
+/* The task stays on the left. The basket and the graph use the rest of the width. */
 .workspace {
   display: grid;
   grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
@@ -213,6 +215,7 @@ textarea:focus {
 }
 
 #catalog-panel {
+  /* The product list. It scrolls so the task box stays on screen. */
   margin: -0.35rem 0 0.85rem;
 }
 
@@ -324,6 +327,7 @@ textarea:focus {
 }
 
 #proposal-items {
+  /* Each proposed line is its own card: name, merchant, and the catalog line total. */
   display: grid;
   gap: 0.7rem;
   margin: 0;
@@ -463,6 +467,7 @@ textarea:focus {
   font-weight: 600;
 }
 
+/* Cytoscape draws the reasoning graph into this box. */
 #graph {
   height: 30rem;
   margin-top: 0.7rem;
@@ -525,6 +530,7 @@ textarea:focus {
 }
 
 #receipt {
+  /* The proof slip. It is a record of the check, drawn like a ruled receipt. */
   margin-top: 1rem;
   padding: 1rem 1.05rem 0.85rem;
   border: 1px dashed #b7aa96;
@@ -642,6 +648,7 @@ textarea:focus {
 }
 
 @media (max-width: 860px) {
+  /* On a narrow screen the task stacks above the result. */
   .top,
   .workspace {
     display: block;

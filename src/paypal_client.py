@@ -70,6 +70,7 @@ class PayPalClient:
             self._http.close()
 
     def matches(self, client_id: str, client_secret: str) -> bool:
+        # This tells the app whether the cached client still belongs to the keys in .env.
         return self._client_id == client_id and self._client_secret == client_secret
 
     def create_order(self, *, currency: str, value: str, description: str, custom_id: str) -> dict[str, Any]:
@@ -108,6 +109,7 @@ class PayPalClient:
         )
         return summarise_capture(body)
 
+    # This sends one authenticated PayPal call. The request id is how a retry stays the same call.
     def _post(self, path: str, payload: dict[str, Any], *, request_id: str) -> dict[str, Any]:
         response = self._http.post(
             path,
@@ -121,6 +123,7 @@ class PayPalClient:
         )
         return self._json_or_raise(response)
 
+    # This gets a sandbox access token and reuses it until a minute before it expires.
     def _access_token(self) -> str:
         # PayPal tokens last for expires_in seconds (often hours). Refresh a minute
         # early. Cached on this instance; main.py reuses one instance per process.
@@ -184,6 +187,7 @@ def summarise_capture(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# This is a clock the token cache can call. Tests replace it so they do not wait out a real hour.
 def time_monotonic() -> float:
     import time
 

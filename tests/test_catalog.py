@@ -8,6 +8,7 @@ from src.catalog import load_catalog, price_lines
 CATALOG = load_catalog()
 
 
+# This checks the real catalog file: merchants, prices, and that a claimed price is ignored.
 class CatalogTests(unittest.TestCase):
     def test_file_has_thirty_products_across_five_merchants(self):
         self.assertGreaterEqual(len(CATALOG), 30)

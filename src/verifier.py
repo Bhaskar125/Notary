@@ -24,6 +24,7 @@ _TOTAL_PREFIX = re.compile(r"(?i)\btotal\s*=")
 _LEADING_AMOUNT = re.compile(r"\s*(\d+(?:\.\d{1,2})?)")
 
 
+# This runs every rule and keeps every failure. One failure does not hide the rest.
 def verify(
     policy: Policy,
     order: dict[str, Any],
@@ -50,6 +51,7 @@ def verify(
     return {"passed": not failures, "failures": failures}
 
 
+# This blocks a basket whose catalog total is over the per-order cap. The demo cap is £200.
 def _max_per_order(policy: Policy, order: dict, graph: dict, history: list, now: datetime) -> dict | None:
     total = _pence(order["total_gbp"])
     order_total = z3.Int("order_total_pence")
@@ -66,6 +68,7 @@ def _max_per_order(policy: Policy, order: dict, graph: dict, history: list, now:
     )
 
 
+# This adds this basket to what this browser already spent in the last few days. The demo cap is £500 in 7 days.
 def _max_per_period(policy: Policy, order: dict, graph: dict, history: list, now: datetime) -> dict | None:
     prior = sum(
         (_pence(row["amount_gbp"]) for row in history if _in_days(row, now, policy.period_days)),
@@ -101,6 +104,7 @@ def _max_per_period(policy: Policy, order: dict, graph: dict, history: list, now
     )
 
 
+# This allows a line only when its merchant is on the policy list.
 def _allowed_merchants(policy: Policy, order: dict, graph: dict, history: list, now: datetime) -> dict | None:
     if not policy.allowed_merchants:
         return None
@@ -125,6 +129,7 @@ def _allowed_merchants(policy: Policy, order: dict, graph: dict, history: list, 
     )
 
 
+# This blocks a line whose category is on the blocked list. Alcohol is the demo case.
 def _blocked_categories(policy: Policy, order: dict, graph: dict, history: list, now: datetime) -> dict | None:
     if not policy.blocked_categories:
         return None
@@ -149,6 +154,7 @@ def _blocked_categories(policy: Policy, order: dict, graph: dict, history: list,
     )
 
 
+# This looks up a recent purchase of the same item from the same merchant, then asks Z3 to reject that fact.
 def _no_duplicates(policy: Policy, order: dict, graph: dict, history: list, now: datetime) -> dict | None:
     bad = []
     examples = []
@@ -183,6 +189,7 @@ def _no_duplicates(policy: Policy, order: dict, graph: dict, history: list, now:
     )
 
 
+# This checks the model's sums, then the final total line, against the catalog total.
 def _arithmetic_consistency(policy: Policy, order: dict, graph: dict, history: list, now: datetime) -> dict | None:
     reasoning = str(order.get("reasoning") or "")
     for line in reasoning.splitlines():
@@ -251,6 +258,7 @@ def _arithmetic_consistency(policy: Policy, order: dict, graph: dict, history: l
     )
 
 
+# This fails a purchase that the graph does not connect back to the user's goal.
 def _goal_grounding(policy: Policy, order: dict, graph: dict, history: list, now: datetime) -> dict | None:
     purchase_ids = _purchase_ids(order)
     if not purchase_ids:
@@ -267,6 +275,7 @@ def _goal_grounding(policy: Policy, order: dict, graph: dict, history: list, now
     )
 
 
+# This walks support edges and asks whether this purchase can be reached from the goal.
 def _reaches_goal(graph: dict, purchase_id: str) -> bool:
     """True when Z3 can put this purchase on a supported_by path that starts at a goal.
 
@@ -299,6 +308,7 @@ def _reaches_goal(graph: dict, purchase_id: str) -> bool:
     return _holds(constraints)
 
 
+# This is one Z3 check. True means the facts and the rule can all be true together.
 def _holds(constraints: list) -> bool:
     solver = z3.Solver()
     for constraint in constraints:
@@ -335,6 +345,7 @@ def _in_hours(row: dict, now: datetime, hours: int) -> bool:
     return now - timedelta(hours=hours) <= when <= now
 
 
+# This reads the last "total =" line. A sum on that line is evaluated, then the stated number is read.
 def _final_total(reasoning: str) -> tuple[Decimal | None, Decimal | None]:
     """The last total line, as (added value, stated number).
 

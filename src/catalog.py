@@ -15,6 +15,7 @@ DEFAULT_PATH = Path(__file__).resolve().parent.parent / "data" / "catalog.json"
 SEARCH_LIMIT = 8
 
 
+# This is one product. The price is a Decimal so pence do not drift.
 @dataclass(frozen=True)
 class Product:
     sku: str
@@ -35,6 +36,7 @@ class Product:
         }
 
 
+# This is the whole catalog. Search is capped so the agent has to open a listing to read it.
 class Catalog:
     def __init__(self, products: list[Product]):
         seen: set[str] = set()
@@ -52,7 +54,7 @@ class Catalog:
         return self._by_sku.get(sku.strip())
 
     def products(self) -> list[Product]:
-        """Every product, ordered for a tester browsing the catalog."""
+        # This is the browse order: category, then name. The Catalog button uses it.
         return sorted(self._products, key=lambda product: (product.category.casefold(), product.name.casefold()))
 
     @property
@@ -105,6 +107,7 @@ class Catalog:
         return matches[:limit], len(matches)
 
 
+# This reads data/catalog.json and refuses a file with no products.
 def load_catalog(path: Path = DEFAULT_PATH) -> Catalog:
     raw = json.loads(path.read_text(encoding="utf-8"))
     rows = raw.get("products") if isinstance(raw, dict) else None
@@ -159,11 +162,13 @@ def price_lines(catalog: Catalog, items: list[dict]) -> tuple[list[dict], list[s
     return lines, []
 
 
+# This adds up the catalog line totals. The model's own total is not used.
 def order_total(lines: list[dict]) -> str:
     total = sum((Decimal(line["line_total_gbp"]) for line in lines), Decimal("0"))
     return money(total)
 
 
+# This accepts a quantity only when it is a whole number from 1 to 99.
 def parse_quantity(value: object) -> int | None:
     if isinstance(value, bool) or value is None:
         return None
@@ -180,10 +185,12 @@ def parse_quantity(value: object) -> int | None:
     return None
 
 
+# This prints a price with two decimal places, such as 4.50.
 def money(value: Decimal) -> str:
     return f"{value.quantize(Decimal('0.01')):.2f}"
 
 
+# This turns one JSON object into a product and complains when a field is missing.
 def _product_from_row(row: object, path: Path) -> Product:
     if not isinstance(row, dict):
         raise ValueError(f"{path} has a product that is not an object")

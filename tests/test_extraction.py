@@ -37,6 +37,7 @@ def trace_for(*skus: str) -> list:
     ]
 
 
+# This checks the amber saving notes, and that they do not change a passing verdict.
 class SuggestionTests(unittest.TestCase):
     def test_a_laptop_is_not_office_supplies(self):
         items = [line("PEN-BOX"), line("LAPTOP-14")]
