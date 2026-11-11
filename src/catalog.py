@@ -51,6 +51,10 @@ class Catalog:
     def get(self, sku: str) -> Product | None:
         return self._by_sku.get(sku.strip())
 
+    def products(self) -> list[Product]:
+        """Every product, ordered for a tester browsing the catalog."""
+        return sorted(self._products, key=lambda product: (product.category.casefold(), product.name.casefold()))
+
     @property
     def merchants(self) -> set[str]:
         return {product.merchant for product in self._products}

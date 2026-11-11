@@ -199,6 +199,23 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/catalog")
+def catalog() -> dict:
+    """Names and prices a tester can ask for. Listing text stays with the agent."""
+    return {
+        "products": [
+            {
+                "sku": product.sku,
+                "name": product.name,
+                "merchant": product.merchant,
+                "category": product.category,
+                "price_gbp": product.public()["price_gbp"],
+            }
+            for product in default_catalog().products()
+        ]
+    }
+
+
 @app.get("/api/config")
 def config() -> dict:
     """Public config for the button. The client secret is never included."""

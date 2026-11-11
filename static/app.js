@@ -540,6 +540,70 @@ function counterexampleText(example) {
 
 document.getElementById("receipt-download").addEventListener("click", downloadReceipt);
 
+let catalogLoaded = false;
+
+function addProductToTask(name) {
+  const field = document.getElementById("task");
+  const current = field.value.trim();
+  if (current.toLowerCase().includes(name.toLowerCase())) {
+    field.focus();
+    return;
+  }
+  const sentence = `Also buy one ${name}.`;
+  field.value = current ? `${current} ${sentence}` : `Buy one ${name}.`;
+  field.focus();
+}
+
+async function toggleCatalog() {
+  const panel = document.getElementById("catalog-panel");
+  const opening = panel.hidden;
+  panel.hidden = !opening;
+  document.getElementById("catalog-toggle").setAttribute("aria-expanded", String(opening));
+  if (!opening || catalogLoaded) return;
+  const list = document.getElementById("catalog-list");
+  list.replaceChildren();
+  let products = [];
+  try {
+    const response = await fetch("/api/catalog");
+    if (!response.ok) throw new Error("catalog");
+    const body = await response.json();
+    products = body.products || [];
+  } catch (error) {
+    console.error(error);
+    const row = document.createElement("li");
+    row.className = "catalog-category";
+    row.textContent = "The catalog could not be loaded.";
+    list.append(row);
+    return;
+  }
+  let category = "";
+  for (const product of products) {
+    if (product.category !== category) {
+      category = product.category;
+      const head = document.createElement("li");
+      head.className = "catalog-category";
+      head.textContent = category;
+      list.append(head);
+    }
+    const row = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "catalog-item";
+    const name = document.createElement("span");
+    name.textContent = product.name;
+    const meta = document.createElement("span");
+    meta.className = "line-meta";
+    meta.textContent = `${product.merchant} · £${product.price_gbp}`;
+    button.append(name, meta);
+    button.addEventListener("click", () => addProductToTask(product.name));
+    row.append(button);
+    list.append(row);
+  }
+  catalogLoaded = true;
+}
+
+document.getElementById("catalog-toggle").addEventListener("click", toggleCatalog);
+
 document.querySelectorAll("[data-example]").forEach((button) => {
   button.addEventListener("click", () => {
     const field = document.getElementById("task");

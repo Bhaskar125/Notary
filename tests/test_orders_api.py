@@ -76,8 +76,20 @@ class OrdersApiTests(unittest.TestCase):
         self.assertIn("Propose a basket", page.text)
         self.assertIn('id="receipt-download"', page.text)
         self.assertIn("Download receipt", page.text)
+        self.assertIn('id="catalog-toggle"', page.text)
         self.assertNotIn("hardcoded", page.text.casefold())
         self.assertNotIn("PAYPAL_CLIENT_SECRET", page.text)
+
+    def test_catalog_lists_names_and_prices_without_listing_text(self):
+        response = client.get("/api/catalog")
+        self.assertEqual(response.status_code, 200)
+        products = response.json()["products"]
+        self.assertEqual(len(products), 31)
+        mouse = next(item for item in products if item["sku"] == "MOUSE-WIRELESS")
+        self.assertEqual(mouse["name"], "Wireless mouse")
+        self.assertEqual(mouse["price_gbp"], "14.99")
+        self.assertNotIn("description", mouse)
+        self.assertNotIn("buy 50", response.text.casefold())
 
     def test_config_hides_the_secret_and_reports_missing_credentials(self):
         with patch.dict(os.environ, {"PAYPAL_CLIENT_ID": "", "PAYPAL_CLIENT_SECRET": ""}, clear=False):

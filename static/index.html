@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Outfit:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/static/styles.css?v=9" />
+    <link rel="stylesheet" href="/static/styles.css?v=10" />
   </head>
   <body>
     <header class="top">
@@ -43,6 +43,11 @@
             <button type="button" data-example="Buy one box of ballpoint pens.">Pens</button>
             <button type="button" data-example="Buy one USB-C cable.">USB-C cable</button>
             <button type="button" data-example="Buy a laptop.">Laptop</button>
+            <button type="button" id="catalog-toggle" aria-expanded="false" aria-controls="catalog-panel">Catalog</button>
+          </div>
+          <div id="catalog-panel" hidden>
+            <p class="hint">Click an item to add it to the task.</p>
+            <ul id="catalog-list"></ul>
           </div>
           <button type="submit" id="task-submit">Propose a basket</button>
         </form>
@@ -115,7 +120,7 @@
       </section>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
-    <script src="/static/app.js?v=9"></script>
+    <script src="/static/app.js?v=10"></script>
     <script
       async
       src="https://www.sandbox.paypal.com/web-sdk/v6/core"
